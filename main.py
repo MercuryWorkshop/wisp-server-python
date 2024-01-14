@@ -9,9 +9,8 @@ queue_size = 128
 
 #wisp packet format definitions
 #see https://docs.python.org/3/library/struct.html for what these characters mean
-packet_format = "<BIs"
-connect_format = "<BHs"
-data_format = "<s"
+packet_format = "<BI"
+connect_format = "<BH"
 continue_format = "<B"
 close_format = "<B"
 
@@ -24,16 +23,16 @@ class WispConnection:
   #send the initial CONTINUE packet
   async def setup(self):
     continue_payload = struct.pack(continue_format, queue_size)
-    continue_packet = struct.pack(packet_format, 0x03, 0, continue_payload)
+    continue_packet = struct.pack(packet_format, 0x03, 0) + continue_payload
     await self.ws.send(continue_packet)
 
   async def new_stream(self, stream_id, payload):
-    stream_type, destination_port, destination_host = struct.unpack(connect_format, packet)
-    hostname = destination_host.decode()
+    stream_type, destination_port = struct.unpack(connect_format, payload[:3])
+    hostname = payload[3:].decode()
     
     if stream_type != 1: #udp not supported yet
       close_payload = struct.pack(close_format, 0x41)
-      close_packet = struct.pack(packet_format, 0x04, stream_id, close_payload)
+      close_packet = struct.pack(packet_format, 0x04, stream_id) + close_payload
       await self.ws.send(close_packet)
       return
     
@@ -41,41 +40,52 @@ class WispConnection:
     self.active_streams[stream_id]["reader"] = tcp_reader
     self.active_streams[stream_id]["writer"] = tcp_writer
 
-    ws_to_tcp_task = asyncio.create_task(self.stream_ws_to_tcp(stream_id))
-    tcp_to_ws_task = asyncio.create_task(self.stream_tcp_to_ws(stream_id))
+    ws_to_tcp_task = asyncio.create_task(self.task_wrapper(self.stream_ws_to_tcp, stream_id))
+    tcp_to_ws_task = asyncio.create_task(self.task_wrapper(self.stream_tcp_to_ws, stream_id))
     asyncio.gather(ws_to_tcp_task, tcp_to_ws_task)
+  
+  async def task_wrapper(self, target_func, *args, **kwargs):
+    try:
+      await target_func(*args, **kwargs)
+    except asyncio.CancelledError as e:
+      raise e
   
   async def stream_ws_to_tcp(self, stream_id):
     #this infinite loop should get killed by the task.cancel call later on
     while True: 
       stream = self.active_streams[stream_id]
       data = await stream["queue"].get()
-      await stream["writer"].write(data)
+      stream["writer"].write(data)
+      await stream["writer"].drain()
 
       #send a CONTINUE packet periodically
       stream["packets_sent"] += 1
       if stream["packets_sent"] % queue_size / 4 == 0:
         buffer_remaining = stream["queue"].maxsize - stream["queue"].qsize()
         continue_payload = struct.pack(continue_format, buffer_remaining)
-        continue_packet = struct.pack(packet_format, 0x03, stream_id, continue_payload)
+        continue_packet = struct.pack(packet_format, 0x03, stream_id) + continue_payload
         await self.ws.send(continue_packet)
   
   async def stream_tcp_to_ws(self, stream_id):
     while True:
       stream = self.active_streams[stream_id]
-      data = await stream["reader"].recv()
+      data = await stream["reader"].read(tcp_size)
       if len(data) == 0: #connection closed
         self.close_stream(stream_id)
         break
-      data_packet = struct.pack(packet_format, 0x02, stream_id, data)
+      data_packet = struct.pack(packet_format, 0x02, stream_id) + data
       await self.ws.send(data_packet)
     
     #send close packet to ws
+    if not stream_id in self.active_streams:
+      return
     close_payload = struct.pack(close_format, 0x01)
-    close_packet = struct.pack(packet_format, 0x04, stream_id, close_payload)
+    close_packet = struct.pack(packet_format, 0x04, stream_id) + close_payload
     await self.ws.send(close_packet)
   
   def close_stream(self, stream_id):
+    if not stream_id in self.active_streams:
+      return #stream already closed
     stream = self.active_streams[stream_id]
     self.close_tcp(stream["writer"])
 
@@ -104,10 +114,11 @@ class WispConnection:
         break
       
       #get basic packet info
-      packet_type, stream_id, payload = struct.unpack(packet_format)
+      payload = data[5:]
+      packet_type, stream_id = struct.unpack(packet_format, data[:5])
 
       if packet_type == 0x01: #CONNECT packet
-        connect_task = asyncio.create_task(self.new_stream(stream_id, payload))
+        connect_task = asyncio.create_task(self.task_wrapper(self.new_stream, stream_id, payload))
         self.active_streams[stream_id] = {
           "reader": None,
           "writer": None,
@@ -117,7 +128,7 @@ class WispConnection:
           "tcp_to_ws_task": None,
           "packets_sent": 0
         }
-        asyncio.gather(stream_task)
+        asyncio.gather(connect_task)
       
       elif packet_type == 0x02: #DATA packet
         stream = self.active_streams[stream_id]
@@ -140,7 +151,7 @@ async def connection_handler(websocket, path):
   await asyncio.gather(ws_handler)
 
 async def main():
-  async with serve(connection_handler, "127.0.0.1", 6001):
+  async with serve(connection_handler, "127.0.0.1", 6001, subprotocols=["wisp-v1"]):
     await asyncio.Future()
 
 if __name__ == "__main__":
