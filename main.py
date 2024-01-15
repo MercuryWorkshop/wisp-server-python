@@ -1,5 +1,6 @@
 import asyncio
 import struct
+import os
 
 from websockets.server import serve
 from websockets.exceptions import ConnectionClosed
@@ -191,7 +192,10 @@ async def connection_handler(websocket, path):
     await asyncio.gather(ws_handler, tcp_handler)
 
 async def main():
-  async with serve(connection_handler, "127.0.0.1", 6001, subprotocols=["wisp-v1"]):
+  host = os.environ.get("HOST") or "127.0.0.1"
+  port = os.environ.get("PORT") or 6001
+  print(f"listening on {host}:{port}")
+  async with serve(connection_handler, host, int(port), subprotocols=["wisp-v1"]):
     await asyncio.Future()
 
 if __name__ == "__main__":
