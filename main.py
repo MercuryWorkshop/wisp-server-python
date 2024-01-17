@@ -80,7 +80,8 @@ class WispConnection:
 
     ws_to_tcp_task = asyncio.create_task(self.task_wrapper(self.stream_ws_to_tcp, stream_id))
     tcp_to_ws_task = asyncio.create_task(self.task_wrapper(self.stream_tcp_to_ws, stream_id))
-    asyncio.gather(ws_to_tcp_task, tcp_to_ws_task)
+    self.active_streams[stream_id]["ws_to_tcp_task"] = ws_to_tcp_task
+    self.active_streams[stream_id]["tcp_to_ws_task"] = tcp_to_ws_task
   
   async def task_wrapper(self, target_func, *args, **kwargs):
     try:
@@ -97,8 +98,6 @@ class WispConnection:
       try:
         await stream["writer"].drain()
       except:
-        await self.send_close_packet(stream_id, 0x02)
-        self.close_stream(stream_id)
         break
 
       #send a CONTINUE packet periodically
@@ -119,7 +118,7 @@ class WispConnection:
       await self.ws.send(data_packet)
 
     await self.send_close_packet(stream_id, 0x02)
-    self.close_stream(stream_id, 0x02)
+    self.close_stream(stream_id)
   
   async def send_close_packet(self, stream_id, reason):
     if not stream_id in self.active_streams:
@@ -173,16 +172,16 @@ class WispConnection:
           "tcp_to_ws_task": None,
           "packets_sent": 0
         }
-        asyncio.gather(connect_task)
       
       elif packet_type == 0x02: #DATA packet
-        stream = self.active_streams[stream_id]
+        stream = self.active_streams.get(stream_id)
+        if not stream:
+          continue
         await stream["queue"].put(payload)
       
       elif packet_type == 0x04: #CLOSE packet
         reason = struct.unpack(close_format, payload)[0]
         self.close_stream(stream_id)
-        print("stream closed with reason " + hex(reason))
   
     #close all active streams when the websocket disconnects
     for stream_id in list(self.active_streams.keys()):
