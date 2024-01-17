@@ -64,12 +64,17 @@ class WispConnection:
     hostname = payload[3:].decode()
     
     if stream_type != 1: #udp not supported yet
-      close_payload = struct.pack(close_format, 0x41)
-      close_packet = struct.pack(packet_format, 0x04, stream_id) + close_payload
-      await self.ws.send(close_packet)
+      await self.send_close_packet(stream_id, 0x41)
+      self.close_stream(stream_id)
       return
     
-    tcp_reader, tcp_writer = await asyncio.open_connection(host=hostname, port=destination_port, limit=tcp_size)
+    try:
+      tcp_reader, tcp_writer = await asyncio.open_connection(host=hostname, port=destination_port, limit=tcp_size)
+    except:
+      await self.send_close_packet(stream_id, 0x42)
+      self.close_stream(stream_id)
+      return
+      
     self.active_streams[stream_id]["reader"] = tcp_reader
     self.active_streams[stream_id]["writer"] = tcp_writer
 
@@ -89,7 +94,12 @@ class WispConnection:
       stream = self.active_streams[stream_id]
       data = await stream["queue"].get()
       stream["writer"].write(data)
-      await stream["writer"].drain()
+      try:
+        await stream["writer"].drain()
+      except:
+        await self.send_close_packet(stream_id, 0x02)
+        self.close_stream(stream_id)
+        break
 
       #send a CONTINUE packet periodically
       stream["packets_sent"] += 1
@@ -104,15 +114,17 @@ class WispConnection:
       stream = self.active_streams[stream_id]
       data = await stream["reader"].read(tcp_size)
       if len(data) == 0: #connection closed
-        self.close_stream(stream_id)
         break
       data_packet = struct.pack(packet_format, 0x02, stream_id) + data
       await self.ws.send(data_packet)
-    
-    #send close packet to ws
+
+    await self.send_close_packet(stream_id, 0x02)
+    self.close_stream(stream_id, 0x02)
+  
+  async def send_close_packet(self, stream_id, reason):
     if not stream_id in self.active_streams:
       return
-    close_payload = struct.pack(close_format, 0x01)
+    close_payload = struct.pack(close_format, reason)
     close_packet = struct.pack(packet_format, 0x04, stream_id) + close_payload
     await self.ws.send(close_packet)
   
