@@ -1,12 +1,15 @@
 import asyncio
 import struct
 import os
+import pathlib
+import mimetypes
 
 from websockets.server import serve
 from websockets.exceptions import ConnectionClosed
 
 tcp_size = 64*1024
 queue_size = 128
+static_path = None
 
 #wisp packet format definitions
 #see https://docs.python.org/3/library/struct.html for what these characters mean
@@ -202,11 +205,44 @@ async def connection_handler(websocket, path):
     tcp_handler = asyncio.create_task(connection.handle_tcp())
     await asyncio.gather(ws_handler, tcp_handler)
 
+async def static_handler(path, request_headers):
+  if "Upgrade" in request_headers:
+    return
+    
+  response_headers = [
+    ("Server", "Python Wisp Server")
+  ]
+  target_path = static_path / path[1:]
+
+  if not target_path.exists():
+    return 404, response_headers, "404 not found"
+  if not target_path.is_relative_to(static_path):
+    return 403, response_headers, "403 forbidden, disallowed path"
+  
+  if target_path.is_dir():
+    target_path = target_path / "index.html"
+  
+  mimetype = mimetypes.guess_type(target_path.name)[0]
+  response_headers.append(("Content-Type", mimetype))
+
+  static_data = await asyncio.to_thread(target_path.read_bytes)
+  return 200, response_headers, static_data
+
 async def main():
+  global static_path
   host = os.environ.get("HOST") or "127.0.0.1"
   port = os.environ.get("PORT") or 6001
+  static = os.environ.get("STATIC")
+
+  if static:
+    static_path = pathlib.Path(static).resolve()
+  else:
+    static_path = pathlib.Path(os.getcwd())
+  mimetypes.init()
+
+  print(f"serving static files from {static_path}")
   print(f"listening on {host}:{port}")
-  async with serve(connection_handler, host, int(port), subprotocols=["wisp-v1"]):
+  async with serve(connection_handler, host, int(port), subprotocols=["wisp-v1"], process_request=static_handler):
     await asyncio.Future()
 
 if __name__ == "__main__":
