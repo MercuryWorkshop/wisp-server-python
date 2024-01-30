@@ -214,13 +214,13 @@ async def static_handler(path, request_headers):
   ]
   target_path = static_path / path[1:]
 
-  if not target_path.exists():
-    return 404, response_headers, "404 not found"
-  if not target_path.is_relative_to(static_path):
-    return 403, response_headers, "403 forbidden, disallowed path"
-  
   if target_path.is_dir():
     target_path = target_path / "index.html"
+  if not target_path.is_relative_to(static_path):
+    return 403, response_headers, "403 forbidden".encode()
+  if not target_path.exists():
+    return 404, response_headers, "404 not found".encode()
+
   
   mimetype = mimetypes.guess_type(target_path.name)[0]
   response_headers.append(("Content-Type", mimetype))
@@ -236,13 +236,14 @@ async def main():
 
   if static:
     static_path = pathlib.Path(static).resolve()
+    request_handler = static_handler
+    mimetypes.init()
+    print(f"serving static files from {static_path}")
   else:
-    static_path = pathlib.Path(os.getcwd())
-  mimetypes.init()
+    request_handler = None
 
-  print(f"serving static files from {static_path}")
   print(f"listening on {host}:{port}")
-  async with serve(connection_handler, host, int(port), subprotocols=["wisp-v1"], process_request=static_handler):
+  async with serve(connection_handler, host, int(port), subprotocols=["wisp-v1"], process_request=request_handler):
     await asyncio.Future()
 
 if __name__ == "__main__":
