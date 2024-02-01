@@ -191,7 +191,11 @@ class WispConnection:
       self.close_stream(stream_id)
 
 async def connection_handler(websocket, path):
-  print("incoming connection from "+path)
+  client_ip = websocket.remote_address[0]
+  if client_ip == "127.0.0.1" and "X-Real-IP" in websocket.request_headers:
+    client_ip = websocket.request_headers["X-Real-IP"]
+
+  print(f"incoming connection on {path} from {client_ip}")
   if path.endswith("/"):
     connection = WispConnection(websocket, path)
     await connection.setup()
@@ -210,7 +214,7 @@ async def static_handler(path, request_headers):
     return
     
   response_headers = [
-    ("Server", "Python Wisp Server")
+    ("Server", "wisp-server-python")
   ]
   target_path = static_path / path[1:]
 
