@@ -3,13 +3,14 @@ import struct
 import os
 import pathlib
 import mimetypes
-import time
+import argparse
 
 from websockets.server import serve
 from websockets.exceptions import ConnectionClosed
 
 import ratelimit
 
+version = "0.1.0"
 tcp_size = 64*1024
 queue_size = 128
 static_path = None
@@ -41,7 +42,7 @@ class WSProxyConnection:
       except ConnectionClosed:
         break
 
-      await ratelimit.limit_client_bandwidth(self.client_ip, len(data_packet), "ws")
+      await ratelimit.limit_client_bandwidth(self.client_ip, len(data), "ws")
       self.tcp_writer.write(data)
       await self.tcp_writer.drain()
     
@@ -53,7 +54,7 @@ class WSProxyConnection:
       if len(data) == 0:
         break #socket closed
 
-      await ratelimit.limit_client_bandwidth(self.client_ip, len(data_packet), "tcp")
+      await ratelimit.limit_client_bandwidth(self.client_ip, len(data), "tcp")
       await self.ws.send(data)
     
     await self.ws.close()
@@ -76,7 +77,8 @@ class WispConnection:
     hostname = payload[3:].decode()
 
     #rate limited
-    if ratelimit.get_client_attr(self.client_ip, "streams") > ratelimit.connections_limit:
+    stream_count = ratelimit.get_client_attr(self.client_ip, "streams")
+    if ratelimit.enabled and stream_count > ratelimit.connections_limit:
       await self.send_close_packet(stream_id, 0x49)
       self.close_stream(stream_id)
       return
@@ -220,6 +222,7 @@ async def connection_handler(websocket, path):
 
   print(f"incoming connection on {path} from {client_ip}")
   ratelimit.inc_client_attr(client_ip, "streams")
+
   if path.endswith("/"):
     connection = WispConnection(websocket, path, client_ip)
     await connection.setup()
@@ -227,6 +230,9 @@ async def connection_handler(websocket, path):
     await asyncio.gather(ws_handler)
 
   else:
+    stream_count = ratelimit.get_client_attr(self.client_ip, "streams")
+    if ratelimit.enabled and stream_count > ratelimit.connections_limit:
+      return
     connection = WSProxyConnection(websocket, path, client_ip)
     await connection.setup_connection()
     ws_handler = asyncio.create_task(connection.handle_ws())
@@ -255,25 +261,43 @@ async def static_handler(path, request_headers):
   static_data = await asyncio.to_thread(target_path.read_bytes)
   return 200, response_headers, static_data
 
-async def main():
+async def main(args):
   global static_path
-  host = os.environ.get("HOST") or "127.0.0.1"
-  port = os.environ.get("PORT") or 6001
-  static = os.environ.get("STATIC")
+  print(f"running wisp-server-python v{version}")
 
-  if static:
-    static_path = pathlib.Path(static).resolve()
+  if args.static:
+    static_path = pathlib.Path(args.static).resolve()
     request_handler = static_handler
     mimetypes.init()
     print(f"serving static files from {static_path}")
   else:
     request_handler = None
   
-  limit_task = asyncio.create_task(ratelimit.reset_limits_timer())
+  if args.limits:
+    print("enabled rate limits")
+    ratelimit.enabled = True
+    ratelimit.connections_limit = int(args.connections)
+    ratelimit.bandwidth_limit = float(args.bandwidth)
+    ratelimit.window_size = float(args.window)
+    limit_task = asyncio.create_task(ratelimit.reset_limits_timer())
 
-  print(f"listening on {host}:{port}")
-  async with serve(connection_handler, host, int(port), subprotocols=["wisp-v1"], process_request=request_handler):
+  print(f"listening on {args.host}:{args.port}")
+  async with serve(connection_handler, args.host, int(args.port), subprotocols=["wisp-v1"], process_request=request_handler):
     await asyncio.Future()
 
 if __name__ == "__main__":
-  asyncio.run(main())
+  parser = argparse.ArgumentParser(
+    prog="wisp-server-python",
+    description="A Wisp server implementation, written in Python."
+  )
+
+  parser.add_argument("--host", default="127.0.0.1", help="The hostname the server will listen on.")
+  parser.add_argument("--port", default=6001, help="The TCP port the server will listen on.")
+  parser.add_argument("--static", help="Where static files are served from.")
+  parser.add_argument("--limits", action="store_true", help="Enable rate limits.")
+  parser.add_argument("--bandwidth", default=1000, help="Bandwidth limit per IP, in kilobytes per second.")
+  parser.add_argument("--connections", default=30, help="Connections limit per IP, in kilobytes per second.")
+  parser.add_argument("--window", default=60, help="Fixed window length for rate limits, in seconds.")
+  args = parser.parse_args()
+
+  asyncio.run(main(args))

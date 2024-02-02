@@ -5,10 +5,12 @@ import time
 #rate limiting uses a fixed window strategy for simplicity
 
 active_clients = {}
+enabled = False
+
 #max new streams per ip per minute
 connections_limit = 30
 #bandwidth limits per ip in kilobytes per second
-bandwidth_limit = 1000
+bandwidth_limit = 100
 #fixed window size, in seconds
 window_size = 60
 
@@ -16,9 +18,9 @@ window_size = 60
 def init_client(client_ip):
   if not client_ip in active_clients:
     active_clients[client_ip] = {
-      "streams": 0,
-      "tcp": 0,
-      "ws": 0,
+      "streams": 0, #number of newly created streams
+      "tcp": 0, #total tcp to ws traffic
+      "ws": 0, #total ws to tcp traffic
       "start": time.time()
     }
 
@@ -40,6 +42,7 @@ def calculate_client_bandwidth(client_ip, attr):
   return total_data / (now - start_time) / 1000
 
 async def limit_client_bandwidth(client_ip, length, attr):
+  if not enabled: return
   inc_client_attr(client_ip, attr, length)
   while calculate_client_bandwidth(client_ip, attr) > bandwidth_limit:
     await asyncio.sleep(0.01)
