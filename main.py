@@ -3,9 +3,12 @@ import struct
 import os
 import pathlib
 import mimetypes
+import time
 
 from websockets.server import serve
 from websockets.exceptions import ConnectionClosed
+
+import ratelimit
 
 tcp_size = 64*1024
 queue_size = 128
@@ -19,9 +22,10 @@ continue_format = "<B"
 close_format = "<B"
 
 class WSProxyConnection:
-  def __init__(self, ws, path):
+  def __init__(self, ws, path, client_ip):
     self.ws = ws
     self.path = path
+    self.client_ip = client_ip
 
   async def setup_connection(self):
     addr_str = self.path.split("/")[-1]
@@ -36,6 +40,8 @@ class WSProxyConnection:
         data = await self.ws.recv()
       except ConnectionClosed:
         break
+
+      await ratelimit.limit_client_bandwidth(self.client_ip, len(data_packet), "ws")
       self.tcp_writer.write(data)
       await self.tcp_writer.drain()
     
@@ -46,15 +52,18 @@ class WSProxyConnection:
       data = await self.tcp_reader.read(tcp_size)
       if len(data) == 0:
         break #socket closed
+
+      await ratelimit.limit_client_bandwidth(self.client_ip, len(data_packet), "tcp")
       await self.ws.send(data)
     
     await self.ws.close()
 
 class WispConnection:
-  def __init__(self, ws, path):
+  def __init__(self, ws, path, client_ip):
     self.ws = ws
     self.path = path
     self.active_streams = {}
+    self.client_ip = client_ip
   
   #send the initial CONTINUE packet
   async def setup(self):
@@ -65,26 +74,35 @@ class WispConnection:
   async def new_stream(self, stream_id, payload):
     stream_type, destination_port = struct.unpack(connect_format, payload[:3])
     hostname = payload[3:].decode()
+
+    #rate limited
+    if ratelimit.get_client_attr(self.client_ip, "streams") > ratelimit.connections_limit:
+      await self.send_close_packet(stream_id, 0x49)
+      self.close_stream(stream_id)
+      return
     
-    if stream_type != 1: #udp not supported yet
+    #udp not supported yet
+    if stream_type != 1: 
       await self.send_close_packet(stream_id, 0x41)
       self.close_stream(stream_id)
       return
     
+    #info looks valid - try to open the connection now
     try:
       tcp_reader, tcp_writer = await asyncio.open_connection(host=hostname, port=destination_port, limit=tcp_size)
     except:
       await self.send_close_packet(stream_id, 0x42)
       self.close_stream(stream_id)
       return
-      
+    
     self.active_streams[stream_id]["reader"] = tcp_reader
     self.active_streams[stream_id]["writer"] = tcp_writer
-
     ws_to_tcp_task = asyncio.create_task(self.task_wrapper(self.stream_ws_to_tcp, stream_id))
     tcp_to_ws_task = asyncio.create_task(self.task_wrapper(self.stream_tcp_to_ws, stream_id))
     self.active_streams[stream_id]["ws_to_tcp_task"] = ws_to_tcp_task
     self.active_streams[stream_id]["tcp_to_ws_task"] = tcp_to_ws_task
+
+    ratelimit.inc_client_attr(self.client_ip, "streams")
   
   async def task_wrapper(self, target_func, *args, **kwargs):
     try:
@@ -118,6 +136,8 @@ class WispConnection:
       if len(data) == 0: #connection closed
         break
       data_packet = struct.pack(packet_format, 0x02, stream_id) + data
+
+      await ratelimit.limit_client_bandwidth(self.client_ip, len(data_packet), "tcp")
       await self.ws.send(data_packet)
 
     await self.send_close_packet(stream_id, 0x02)
@@ -160,6 +180,9 @@ class WispConnection:
       except ConnectionClosed:
         break
       
+      #implement bandwidth limits
+      await ratelimit.limit_client_bandwidth(self.client_ip, len(data), "ws")
+      
       #get basic packet info
       payload = data[5:]
       packet_type, stream_id = struct.unpack(packet_format, data[:5])
@@ -196,14 +219,15 @@ async def connection_handler(websocket, path):
     client_ip = websocket.request_headers["X-Real-IP"]
 
   print(f"incoming connection on {path} from {client_ip}")
+  ratelimit.inc_client_attr(client_ip, "streams")
   if path.endswith("/"):
-    connection = WispConnection(websocket, path)
+    connection = WispConnection(websocket, path, client_ip)
     await connection.setup()
     ws_handler = asyncio.create_task(connection.handle_ws())  
     await asyncio.gather(ws_handler)
 
   else:
-    connection = WSProxyConnection(websocket, path)
+    connection = WSProxyConnection(websocket, path, client_ip)
     await connection.setup_connection()
     ws_handler = asyncio.create_task(connection.handle_ws())
     tcp_handler = asyncio.create_task(connection.handle_tcp())
@@ -224,7 +248,6 @@ async def static_handler(path, request_headers):
     return 403, response_headers, "403 forbidden".encode()
   if not target_path.exists():
     return 404, response_headers, "404 not found".encode()
-
   
   mimetype = mimetypes.guess_type(target_path.name)[0]
   response_headers.append(("Content-Type", mimetype))
@@ -245,6 +268,8 @@ async def main():
     print(f"serving static files from {static_path}")
   else:
     request_handler = None
+  
+  limit_task = asyncio.create_task(ratelimit.reset_limits_timer())
 
   print(f"listening on {host}:{port}")
   async with serve(connection_handler, host, int(port), subprotocols=["wisp-v1"], process_request=request_handler):
