@@ -10,7 +10,7 @@ from websockets.exceptions import ConnectionClosed
 
 import ratelimit
 
-version = "0.1.0"
+version = "0.1.1"
 tcp_size = 64*1024
 queue_size = 128
 static_path = None
@@ -19,7 +19,7 @@ static_path = None
 #see https://docs.python.org/3/library/struct.html for what these characters mean
 packet_format = "<BI"
 connect_format = "<BH"
-continue_format = "<B"
+continue_format = "<I"
 close_format = "<B"
 
 class WSProxyConnection:
@@ -230,7 +230,7 @@ async def connection_handler(websocket, path):
     await asyncio.gather(ws_handler)
 
   else:
-    stream_count = ratelimit.get_client_attr(self.client_ip, "streams")
+    stream_count = ratelimit.get_client_attr(client_ip, "streams")
     if ratelimit.enabled and stream_count > ratelimit.connections_limit:
       return
     connection = WSProxyConnection(websocket, path, client_ip)
@@ -244,7 +244,7 @@ async def static_handler(path, request_headers):
     return
     
   response_headers = [
-    ("Server", "wisp-server-python")
+    ("Server", f"wisp-server-python v{version}")
   ]
   target_path = static_path / path[1:]
 
@@ -279,8 +279,8 @@ async def main(args):
     ratelimit.connections_limit = int(args.connections)
     ratelimit.bandwidth_limit = float(args.bandwidth)
     ratelimit.window_size = float(args.window)
-    limit_task = asyncio.create_task(ratelimit.reset_limits_timer())
-
+    
+  limit_task = asyncio.create_task(ratelimit.reset_limits_timer())
   print(f"listening on {args.host}:{args.port}")
   async with serve(connection_handler, args.host, int(args.port), subprotocols=["wisp-v1"], process_request=request_handler):
     await asyncio.Future()
