@@ -19,7 +19,7 @@ static_path = None
 #see https://docs.python.org/3/library/struct.html for what these characters mean
 packet_format = "<BI"
 connect_format = "<BH"
-continue_format = "<B"
+continue_format = "<I"
 close_format = "<B"
 
 class WSProxyConnection:
