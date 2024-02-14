@@ -12,22 +12,13 @@ pip3 install -r requirements.txt
 
 To start the server, run the `main.py` file. The program accepts the following arguments:
 ```
-usage: wisp-server-python [-h] [--host HOST] [--port PORT] [--static STATIC] [--limits] [--bandwidth BANDWIDTH] [--connections CONNECTIONS]
-                          [--window WINDOW]
+usage: wisp-server-python [-h] --config CONFIG
 
 A Wisp server implementation, written in Python.
 
 options:
-  -h, --help            show this help message and exit
-  --host HOST           The hostname the server will listen on.
-  --port PORT           The TCP port the server will listen on.
-  --static STATIC       Where static files are served from.
-  --limits              Enable rate limits.
-  --bandwidth BANDWIDTH
-                        Bandwidth limit per IP, in kilobytes per second.
-  --connections CONNECTIONS
-                        Connections limit per IP, in kilobytes per second.
-  --window WINDOW       Fixed window length for rate limits, in seconds.
+  -h, --help       show this help message and exit
+  --config CONFIG  The config file to use
 ```
 
 ## Roadmap:
