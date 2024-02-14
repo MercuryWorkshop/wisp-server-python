@@ -309,6 +309,6 @@ if __name__ == "__main__":
     window=config["window"]
   )
 
-  print(args)
+  #print(args)
 
   asyncio.run(main(args))
