@@ -9,6 +9,7 @@ from websockets.server import serve
 from websockets.exceptions import ConnectionClosed
 
 import ratelimit
+import json
 
 version = "0.1.1"
 tcp_size = 64*1024
@@ -291,13 +292,23 @@ if __name__ == "__main__":
     description="A Wisp server implementation, written in Python."
   )
 
-  parser.add_argument("--host", default="127.0.0.1", help="The hostname the server will listen on.")
-  parser.add_argument("--port", default=6001, help="The TCP port the server will listen on.")
-  parser.add_argument("--static", help="Where static files are served from.")
-  parser.add_argument("--limits", action="store_true", help="Enable rate limits.")
-  parser.add_argument("--bandwidth", default=1000, help="Bandwidth limit per IP, in kilobytes per second.")
-  parser.add_argument("--connections", default=30, help="Connections limit per IP, in kilobytes per second.")
-  parser.add_argument("--window", default=60, help="Fixed window length for rate limits, in seconds.")
-  args = parser.parse_args()
+  def load_config():
+    with open('config.json') as f:
+      config = json.load(f)
+    return config
+
+  config = load_config()
+
+  args = argparse.Namespace(
+    host=config["host"],
+    port=config["port"],
+    static=config["static"],
+    limits=config["limits"],
+    bandwidth=config["bandwidth"],
+    connections=config["connections"],
+    window=config["window"]
+  )
+
+  print(args)
 
   asyncio.run(main(args))
