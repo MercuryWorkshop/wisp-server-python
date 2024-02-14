@@ -299,7 +299,7 @@ if __name__ == "__main__":
   parser.add_argument("--bandwidth", default=1000, help="Bandwidth limit per IP, in kilobytes per second.")
   parser.add_argument("--connections", default=30, help="Connections limit per IP, in kilobytes per second.")
   parser.add_argument("--window", default=60, help="Fixed window length for rate limits, in seconds.")
-  parser.add_argument("--config", default="config.json", help="Fixed window length for rate limits, in seconds.")
+  parser.add_argument("--config", default="config.json", help="The config file location.")
   args = parser.parse_args()
   def load_config():
     with open(args.config) as f:
