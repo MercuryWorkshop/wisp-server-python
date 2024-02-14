@@ -33,7 +33,7 @@ options:
 
 ## Roadmap:
 - ~~Rate limits~~
-- JSON based config files
+- ~~JSON based config files~~
 - UDP support
 
 ## Copyright:
