@@ -287,19 +287,23 @@ async def main(args):
     await asyncio.Future()
 
 if __name__ == "__main__":
+
   parser = argparse.ArgumentParser(
     prog="wisp-server-python",
     description="A Wisp server implementation, written in Python."
   )
 
+  parser.add_argument("--config", required=True, help="The config file to use")
+  args = parser.parse_args()
+
   def load_config():
-    with open('config.json') as f:
+    with open(args.config) as f:
       config = json.load(f)
     return config
 
   config = load_config()
 
-  args = argparse.Namespace(
+  progargs = argparse.Namespace(
     host=config["host"],
     port=config["port"],
     static=config["static"],
@@ -309,6 +313,4 @@ if __name__ == "__main__":
     window=config["window"]
   )
 
-  #print(args)
-
-  asyncio.run(main(args))
+  asyncio.run(main(progargs))
