@@ -10,7 +10,7 @@ from websockets.exceptions import ConnectionClosed
 
 import ratelimit
 
-version = "0.1.1"
+version = "0.1.2"
 tcp_size = 64*1024
 queue_size = 128
 static_path = None
@@ -282,7 +282,7 @@ async def main(args):
     
   limit_task = asyncio.create_task(ratelimit.reset_limits_timer())
   print(f"listening on {args.host}:{args.port}")
-  async with serve(connection_handler, args.host, int(args.port), subprotocols=["wisp-v1"], process_request=request_handler):
+  async with serve(connection_handler, args.host, int(args.port), process_request=request_handler):
     await asyncio.Future()
 
 if __name__ == "__main__":
