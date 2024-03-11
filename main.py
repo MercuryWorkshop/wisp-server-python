@@ -10,7 +10,7 @@ from websockets.exceptions import ConnectionClosed
 
 import ratelimit
 
-version = "0.1.2"
+version = "0.1.3"
 tcp_size = 64*1024
 queue_size = 128
 static_path = None
@@ -33,7 +33,11 @@ class WSProxyConnection:
     self.tcp_host, self.tcp_port = addr_str.split(":")
     self.tcp_port = int(self.tcp_port)
 
-    self.tcp_reader, self.tcp_writer = await asyncio.open_connection(host=self.tcp_host, port=self.tcp_port, limit=tcp_size)
+    try:
+      self.tcp_reader, self.tcp_writer = await asyncio.open_connection(host=self.tcp_host, port=self.tcp_port, limit=tcp_size)
+    except Exception as e:
+      print(f"Creating a WSProxy stream to {self.tcp_host}:{self.tcp_port} failed: {e}")
+      await self.ws.close()
 
   async def handle_ws(self):
     while True:
@@ -92,7 +96,8 @@ class WispConnection:
     #info looks valid - try to open the connection now
     try:
       tcp_reader, tcp_writer = await asyncio.open_connection(host=hostname, port=destination_port, limit=tcp_size)
-    except:
+    except Exception as e:
+      print(f"Creating a new stream to {hostname}:{destination_port} failed: {e}")
       await self.send_close_packet(stream_id, 0x42)
       self.close_stream(stream_id)
       return
@@ -134,7 +139,15 @@ class WispConnection:
   async def stream_tcp_to_ws(self, stream_id):
     while True:
       stream = self.active_streams[stream_id]
-      data = await stream["reader"].read(tcp_size)
+      
+      try:
+        data = await stream["reader"].read(tcp_size)
+      except Exception as e:
+        print(f"Receiving data from stream failed: {e}")
+        await self.send_close_packet(stream_id, 0x03)
+        self.close_stream(stream_id)
+        return
+        
       if len(data) == 0: #connection closed
         break
       data_packet = struct.pack(packet_format, 0x02, stream_id) + data
@@ -288,7 +301,7 @@ async def main(args):
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(
     prog="wisp-server-python",
-    description="A Wisp server implementation, written in Python."
+    description=f"A Wisp server implementation, written in Python (v{version})"
   )
 
   parser.add_argument("--host", default="127.0.0.1", help="The hostname the server will listen on.")
@@ -296,7 +309,7 @@ if __name__ == "__main__":
   parser.add_argument("--static", help="Where static files are served from.")
   parser.add_argument("--limits", action="store_true", help="Enable rate limits.")
   parser.add_argument("--bandwidth", default=1000, help="Bandwidth limit per IP, in kilobytes per second.")
-  parser.add_argument("--connections", default=30, help="Connections limit per IP, in kilobytes per second.")
+  parser.add_argument("--connections", default=30, help="New connections limit per IP.")
   parser.add_argument("--window", default=60, help="Fixed window length for rate limits, in seconds.")
   args = parser.parse_args()
 
