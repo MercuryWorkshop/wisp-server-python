@@ -1,6 +1,6 @@
 # Python Wisp Server
 
-This is an implementation of a [Wisp](https://github.com/MercuryWorkshop/wisp-protocol) server, written in Python. It follows the Wisp spec completely, except that it lacks the optional UDP support.
+This is an implementation of a [Wisp](https://github.com/MercuryWorkshop/wisp-protocol) server, written in Python. It follows the Wisp spec completely, including support for UDP connections.
 
 ## Running the Server:
 Clone this repository and cd into it, then run the following commands to install the needed dependencies.
@@ -14,7 +14,7 @@ To start the server, run the `main.py` file. The program accepts the following a
 ```
 usage: wisp-server-python [-h] [--host HOST] [--port PORT] [--static STATIC] [--limits] [--bandwidth BANDWIDTH] [--connections CONNECTIONS] [--window WINDOW]
 
-A Wisp server implementation, written in Python (v0.1.3)
+A Wisp server implementation, written in Python (v0.2.0)
 
 options:
   -h, --help            show this help message and exit
@@ -32,7 +32,8 @@ options:
 ## Roadmap:
 - ~~Rate limits~~
 - JSON based config files
-- UDP support
+- ~~UDP support~~
+- Ability to block local addresses
 
 ## Copyright:
 This repository is licensed under the GNU AGPL v3.

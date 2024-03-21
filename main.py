@@ -9,9 +9,9 @@ from websockets.server import serve
 from websockets.exceptions import ConnectionClosed
 
 import ratelimit
+import net
 
-version = "0.1.3"
-tcp_size = 64*1024
+version = "0.2.0"
 queue_size = 128
 static_path = None
 
@@ -34,7 +34,8 @@ class WSProxyConnection:
     self.tcp_port = int(self.tcp_port)
 
     try:
-      self.tcp_reader, self.tcp_writer = await asyncio.open_connection(host=self.tcp_host, port=self.tcp_port, limit=tcp_size)
+      self.conn = net.TCPConnection(self.tcp_host, self.tcp_port)
+      await self.conn.connect()
     except Exception as e:
       print(f"Creating a WSProxy stream to {self.tcp_host}:{self.tcp_port} failed: {e}")
       await self.ws.close()
@@ -47,14 +48,13 @@ class WSProxyConnection:
         break
 
       await ratelimit.limit_client_bandwidth(self.client_ip, len(data), "ws")
-      self.tcp_writer.write(data)
-      await self.tcp_writer.drain()
+      await self.conn.send(data)
     
     self.tcp_writer.close()
   
   async def handle_tcp(self):
     while True:
-      data = await self.tcp_reader.read(tcp_size)
+      data = await self.conn.recv()
       if len(data) == 0:
         break #socket closed
 
@@ -87,23 +87,24 @@ class WispConnection:
       self.close_stream(stream_id)
       return
     
-    #udp not supported yet
-    if stream_type != 1: 
-      await self.send_close_packet(stream_id, 0x41)
-      self.close_stream(stream_id)
-      return
-    
     #info looks valid - try to open the connection now
     try:
-      tcp_reader, tcp_writer = await asyncio.open_connection(host=hostname, port=destination_port, limit=tcp_size)
+      if stream_type == 0x01:
+        connection = net.TCPConnection(hostname, destination_port)
+      elif stream_type == 0x02: 
+        connection = net.UDPConnection(hostname, destination_port)
+      else:
+        raise Exception("Invalid stream type.")
+      await connection.connect()
+        
     except Exception as e:
       print(f"Creating a new stream to {hostname}:{destination_port} failed: {e}")
       await self.send_close_packet(stream_id, 0x42)
       self.close_stream(stream_id)
       return
     
-    self.active_streams[stream_id]["reader"] = tcp_reader
-    self.active_streams[stream_id]["writer"] = tcp_writer
+    self.active_streams[stream_id]["type"] = stream_type
+    self.active_streams[stream_id]["conn"] = connection
     ws_to_tcp_task = asyncio.create_task(self.task_wrapper(self.stream_ws_to_tcp, stream_id))
     tcp_to_ws_task = asyncio.create_task(self.task_wrapper(self.stream_tcp_to_ws, stream_id))
     self.active_streams[stream_id]["ws_to_tcp_task"] = ws_to_tcp_task
@@ -122,9 +123,8 @@ class WispConnection:
     while True: 
       stream = self.active_streams[stream_id]
       data = await stream["queue"].get()
-      stream["writer"].write(data)
       try:
-        await stream["writer"].drain()
+        await stream["conn"].send(data)
       except:
         break
 
@@ -139,9 +139,8 @@ class WispConnection:
   async def stream_tcp_to_ws(self, stream_id):
     while True:
       stream = self.active_streams[stream_id]
-      
       try:
-        data = await stream["reader"].read(tcp_size)
+        data = await stream["conn"].recv()
       except Exception as e:
         print(f"Receiving data from stream failed: {e}")
         await self.send_close_packet(stream_id, 0x03)
@@ -169,7 +168,7 @@ class WispConnection:
     if not stream_id in self.active_streams:
       return #stream already closed
     stream = self.active_streams[stream_id]
-    self.close_tcp(stream["writer"])
+    stream["conn"].close()
 
     #kill the running tasks associated with this stream
     if not stream["connect_task"].done():
@@ -180,13 +179,6 @@ class WispConnection:
       stream["tcp_to_ws_task"].cancel()
     
     del self.active_streams[stream_id]
-  
-  def close_tcp(self, tcp_writer):
-    if tcp_writer is None:
-      return
-    if tcp_writer.is_closing():
-      return
-    tcp_writer.close()
   
   async def handle_ws(self):
     while True:
@@ -205,8 +197,8 @@ class WispConnection:
       if packet_type == 0x01: #CONNECT packet
         connect_task = asyncio.create_task(self.task_wrapper(self.new_stream, stream_id, payload))
         self.active_streams[stream_id] = {
-          "reader": None,
-          "writer": None,
+          "conn": None,
+          "type": None,
           "queue": asyncio.Queue(queue_size),
           "connect_task": connect_task,
           "ws_to_tcp_task": None,
@@ -239,7 +231,7 @@ async def connection_handler(websocket, path):
   if path.endswith("/"):
     connection = WispConnection(websocket, path, client_ip)
     await connection.setup()
-    ws_handler = asyncio.create_task(connection.handle_ws())  
+    ws_handler = asyncio.create_task(connection.handle_ws()) 
     await asyncio.gather(ws_handler)
 
   else:
