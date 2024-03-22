@@ -12,9 +12,9 @@ pip3 install -r requirements.txt
 
 To start the server, run the `main.py` file. The program accepts the following arguments:
 ```
-usage: wisp-server-python [-h] [--host HOST] [--port PORT] [--static STATIC] [--limits] [--bandwidth BANDWIDTH] [--connections CONNECTIONS] [--window WINDOW]
+usage: wisp-server-python [-h] [--host HOST] [--port PORT] [--static STATIC] [--limits] [--bandwidth BANDWIDTH] [--connections CONNECTIONS] [--window WINDOW] [--allow-loopback] [--allow-private]
 
-A Wisp server implementation, written in Python (v0.2.0)
+A Wisp server implementation, written in Python (v0.3.0)
 
 options:
   -h, --help            show this help message and exit
@@ -27,13 +27,15 @@ options:
   --connections CONNECTIONS
                         New connections limit per IP.
   --window WINDOW       Fixed window length for rate limits, in seconds.
+  --allow-loopback      Allow connections to loopback IP addresses.
+  --allow-private       Allow connections to private IP addresses.
 ```
 
 ## Roadmap:
 - ~~Rate limits~~
 - JSON based config files
 - ~~UDP support~~
-- Ability to block local addresses
+- ~~Ability to block local addresses~~
 
 ## Copyright:
 This repository is licensed under the GNU AGPL v3.

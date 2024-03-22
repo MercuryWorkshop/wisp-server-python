@@ -11,7 +11,7 @@ from websockets.exceptions import ConnectionClosed
 import ratelimit
 import net
 
-version = "0.2.0"
+version = "0.3.0"
 queue_size = 128
 static_path = None
 
@@ -95,6 +95,7 @@ class WispConnection:
         connection = net.UDPConnection(hostname, destination_port)
       else:
         raise Exception("Invalid stream type.")
+      self.active_streams[stream_id]["conn"] = connection
       await connection.connect()
         
     except Exception as e:
@@ -104,7 +105,6 @@ class WispConnection:
       return
     
     self.active_streams[stream_id]["type"] = stream_type
-    self.active_streams[stream_id]["conn"] = connection
     ws_to_tcp_task = asyncio.create_task(self.task_wrapper(self.stream_ws_to_tcp, stream_id))
     tcp_to_ws_task = asyncio.create_task(self.task_wrapper(self.stream_tcp_to_ws, stream_id))
     self.active_streams[stream_id]["ws_to_tcp_task"] = ws_to_tcp_task
@@ -284,7 +284,10 @@ async def main(args):
     ratelimit.connections_limit = int(args.connections)
     ratelimit.bandwidth_limit = float(args.bandwidth)
     ratelimit.window_size = float(args.window)
-    
+
+  net.block_loopback = not args.allow_loopback
+  net.block_private = not args.allow_private
+      
   limit_task = asyncio.create_task(ratelimit.reset_limits_timer())
   print(f"listening on {args.host}:{args.port}")
   async with serve(connection_handler, args.host, int(args.port), process_request=request_handler):
@@ -303,6 +306,8 @@ if __name__ == "__main__":
   parser.add_argument("--bandwidth", default=1000, help="Bandwidth limit per IP, in kilobytes per second.")
   parser.add_argument("--connections", default=30, help="New connections limit per IP.")
   parser.add_argument("--window", default=60, help="Fixed window length for rate limits, in seconds.")
+  parser.add_argument("--allow-loopback", action="store_true",help="Allow connections to loopback IP addresses.")
+  parser.add_argument("--allow-private", action="store_true", help="Allow connections to private IP addresses.")
   args = parser.parse_args()
 
   asyncio.run(main(args))
