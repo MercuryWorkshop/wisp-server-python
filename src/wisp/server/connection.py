@@ -15,7 +15,7 @@ static_path = None
 packet_format = "<BI"
 connect_format = "<BH"
 continue_format = "<I"
-close = "<B"
+close_format = "<B"
 
 class WSProxyConnection:
   def __init__(self, ws, path, client_ip):

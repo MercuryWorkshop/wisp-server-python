@@ -1,20 +1,28 @@
 # Python Wisp Server
 
-This is an implementation of a [Wisp](https://github.com/MercuryWorkshop/wisp-protocol) server, written in Python. It follows the Wisp spec completely, including support for UDP connections.
+This is an implementation of a [Wisp](https://github.com/MercuryWorkshop/wisp-protocol) server, written in Python. It follows the Wisp v1 spec completely, including support for UDP connections.
 
-## Running the Server:
-Clone this repository and cd into it, then run the following commands to install the needed dependencies.
+## Installation:
+### Install From Source:
+Clone this repository and cd into it, then run the following commands:
 ```
 python3 -m venv .venv
 source .venv/bin/activate
-pip3 install -r requirements.txt
+pip3 install -e .
 ```
 
-To start the server, run the `main.py` file. The program accepts the following arguments:
+### Install From PyPI:
+Run the following command to install this program:
+```
+pip3 install wisp-python
+```
+
+## Running the Server:
+To start the server, run `python3 -m wisp.server`. The program accepts the following arguments:
 ```
 usage: wisp-server-python [-h] [--host HOST] [--port PORT] [--static STATIC] [--limits] [--bandwidth BANDWIDTH] [--connections CONNECTIONS] [--window WINDOW] [--allow-loopback] [--allow-private]
 
-A Wisp server implementation, written in Python (v0.3.0)
+A Wisp server implementation, written in Python (v0.4.0)
 
 options:
   -h, --help            show this help message and exit
