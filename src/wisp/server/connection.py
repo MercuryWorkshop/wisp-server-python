@@ -1,17 +1,12 @@
 import asyncio
 import struct
 import os
-import pathlib
-import mimetypes
-import argparse
 
-from websockets.server import serve
 from websockets.exceptions import ConnectionClosed
 
-import ratelimit
-import net
+from wisp.server import ratelimit
+from wisp.server import net
 
-version = "0.3.0"
 queue_size = 128
 static_path = None
 
@@ -20,7 +15,7 @@ static_path = None
 packet_format = "<BI"
 connect_format = "<BH"
 continue_format = "<I"
-close_format = "<B"
+close = "<B"
 
 class WSProxyConnection:
   def __init__(self, ws, path, client_ip):
@@ -219,95 +214,3 @@ class WispConnection:
     #close all active streams when the websocket disconnects
     for stream_id in list(self.active_streams.keys()):
       self.close_stream(stream_id)
-
-async def connection_handler(websocket, path):
-  client_ip = websocket.remote_address[0]
-  if client_ip == "127.0.0.1" and "X-Real-IP" in websocket.request_headers:
-    client_ip = websocket.request_headers["X-Real-IP"]
-
-  print(f"incoming connection on {path} from {client_ip}")
-  ratelimit.inc_client_attr(client_ip, "streams")
-
-  if path.endswith("/"):
-    connection = WispConnection(websocket, path, client_ip)
-    await connection.setup()
-    ws_handler = asyncio.create_task(connection.handle_ws()) 
-    await asyncio.gather(ws_handler)
-
-  else:
-    stream_count = ratelimit.get_client_attr(client_ip, "streams")
-    if ratelimit.enabled and stream_count > ratelimit.connections_limit:
-      return
-    connection = WSProxyConnection(websocket, path, client_ip)
-    await connection.setup_connection()
-    ws_handler = asyncio.create_task(connection.handle_ws())
-    tcp_handler = asyncio.create_task(connection.handle_tcp())
-    await asyncio.gather(ws_handler, tcp_handler)
-
-async def static_handler(path, request_headers):
-  if "Upgrade" in request_headers:
-    return
-    
-  response_headers = [
-    ("Server", f"wisp-server-python v{version}")
-  ]
-  target_path = static_path / path[1:]
-
-  if target_path.is_dir():
-    target_path = target_path / "index.html"
-  if not target_path.is_relative_to(static_path):
-    return 403, response_headers, "403 forbidden".encode()
-  if not target_path.exists():
-    return 404, response_headers, "404 not found".encode()
-  
-  mimetype = mimetypes.guess_type(target_path.name)[0]
-  response_headers.append(("Content-Type", mimetype))
-
-  static_data = await asyncio.to_thread(target_path.read_bytes)
-  return 200, response_headers, static_data
-
-async def main(args):
-  global static_path
-  print(f"running wisp-server-python v{version}")
-
-  if args.static:
-    static_path = pathlib.Path(args.static).resolve()
-    request_handler = static_handler
-    mimetypes.init()
-    print(f"serving static files from {static_path}")
-  else:
-    request_handler = None
-  
-  if args.limits:
-    print("enabled rate limits")
-    ratelimit.enabled = True
-    ratelimit.connections_limit = int(args.connections)
-    ratelimit.bandwidth_limit = float(args.bandwidth)
-    ratelimit.window_size = float(args.window)
-
-  net.block_loopback = not args.allow_loopback
-  net.block_private = not args.allow_private
-      
-  limit_task = asyncio.create_task(ratelimit.reset_limits_timer())
-  print(f"listening on {args.host}:{args.port}")
-  async with serve(connection_handler, args.host, int(args.port), process_request=request_handler):
-    await asyncio.Future()
-
-if __name__ == "__main__":
-  parser = argparse.ArgumentParser(
-    prog="wisp-server-python",
-    description=f"A Wisp server implementation, written in Python (v{version})"
-  )
-
-  parser.add_argument("--host", default="127.0.0.1", help="The hostname the server will listen on.")
-  parser.add_argument("--port", default=6001, help="The TCP port the server will listen on.")
-  parser.add_argument("--static", help="Where static files are served from.")
-  parser.add_argument("--limits", action="store_true", help="Enable rate limits.")
-  parser.add_argument("--bandwidth", default=1000, help="Bandwidth limit per IP, in kilobytes per second.")
-  parser.add_argument("--connections", default=30, help="New connections limit per IP.")
-  parser.add_argument("--window", default=60, help="Fixed window length for rate limits, in seconds.")
-  parser.add_argument("--allow-loopback", action="store_true",help="Allow connections to loopback IP addresses.")
-  parser.add_argument("--allow-private", action="store_true", help="Allow connections to private IP addresses.")
-  args = parser.parse_args()
-
-  asyncio.run(main(args))

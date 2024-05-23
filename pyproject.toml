@@ -1,0 +1,33 @@
+#run 'python3 -m build' to build the project
+#then run 'twine upload dist/*' to publish
+
+[build-system]
+requires = ["setuptools>=61.0", "toml"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["wisp"]
+package-dir = {"" = "src"}
+
+[project]
+name = "wisp-python"
+version = "0.4.0"
+authors = [
+  {name="ading2210"},
+]
+description = "An implementation of a Wisp proxy server in Python"
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: GNU Affero General Public License v3",
+  "Operating System :: OS Independent",
+]
+dependencies = [
+  "websockets",
+  "asyncudp"
+]
+
+[project.urls]
+Homepage = "https://github.com/MercuryWorkshop/wisp-server-python"
+Issues = "https://github.com/MercuryWorkshop/wisp-server-python/issues"
