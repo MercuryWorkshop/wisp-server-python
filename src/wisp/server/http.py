@@ -79,5 +79,5 @@ async def main(args):
       
   limit_task = asyncio.create_task(ratelimit.reset_limits_timer())
   print(f"listening on {args.host}:{args.port}")
-  async with serve(connection_handler, args.host, int(args.port), process_request=request_handler):
+  async with serve(connection_handler, args.host, int(args.port), process_request=request_handler, compression=None):
     await asyncio.Future()

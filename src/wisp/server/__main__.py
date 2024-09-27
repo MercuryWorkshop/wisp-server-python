@@ -1,5 +1,10 @@
 import argparse
-import uvloop
+import asyncio
+try:
+  import uvloop
+  use_uvloop = True
+except ImportError:
+  use_uvloop = False
 
 import wisp
 import wisp.server.http
@@ -21,4 +26,8 @@ if __name__ == "__main__":
   parser.add_argument("--allow-private", action="store_true", help="Allow connections to private IP addresses.")
   args = parser.parse_args()
 
-  uvloop.run(wisp.server.http.main(args))
+  if use_uvloop:
+    uvloop.run(wisp.server.http.main(args))
+  else:
+    print("Warning: Importing uvloop failed. Falling back to asyncio, which is slower.")
+    asyncio.run(wisp.server.http.main(args))
