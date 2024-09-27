@@ -11,7 +11,7 @@ package-dir = {"" = "src"}
 
 [project]
 name = "wisp-python"
-version = "0.4.0"
+version = "0.4.1"
 authors = [
   {name="ading2210"},
 ]
@@ -25,7 +25,8 @@ classifiers = [
 ]
 dependencies = [
   "websockets",
-  "asyncudp"
+  "asyncudp",
+  "uvloop"
 ]
 
 [project.urls]

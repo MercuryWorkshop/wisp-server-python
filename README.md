@@ -22,7 +22,7 @@ To start the server, run `python3 -m wisp.server`. The program accepts the follo
 ```
 usage: wisp-server-python [-h] [--host HOST] [--port PORT] [--static STATIC] [--limits] [--bandwidth BANDWIDTH] [--connections CONNECTIONS] [--window WINDOW] [--allow-loopback] [--allow-private]
 
-A Wisp server implementation, written in Python (v0.4.0)
+A Wisp server implementation, written in Python (v0.4.1)
 
 options:
   -h, --help            show this help message and exit

@@ -1,5 +1,5 @@
 import argparse
-import asyncio
+import uvloop
 
 import wisp
 import wisp.server.http
@@ -21,4 +21,4 @@ if __name__ == "__main__":
   parser.add_argument("--allow-private", action="store_true", help="Allow connections to private IP addresses.")
   args = parser.parse_args()
 
-  asyncio.run(wisp.server.http.main(args))
+  uvloop.run(wisp.server.http.main(args))
