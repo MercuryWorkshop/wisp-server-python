@@ -163,7 +163,8 @@ class WispConnection:
     if not stream_id in self.active_streams:
       return #stream already closed
     stream = self.active_streams[stream_id]
-    stream["conn"].close()
+    if stream["conn"]:
+      stream["conn"].close()
 
     #kill the running tasks associated with this stream
     if not stream["connect_task"].done():
@@ -181,6 +182,12 @@ class WispConnection:
         data = await self.ws.recv()
       except ConnectionClosed:
         break
+      except Exception as e:
+        print(f"Receiving data from websocket failed: {e}")
+        break
+
+      if not isinstance(data, bytes): 
+        continue #ignore non binary frames
       
       #implement bandwidth limits
       await ratelimit.limit_client_bandwidth(self.client_ip, len(data), "ws")
