@@ -11,7 +11,7 @@ package-dir = {"" = "src"}
 
 [project]
 name = "wisp-python"
-version = "0.4.3"
+version = "0.5.0"
 authors = [
   {name="ading2210"},
 ]

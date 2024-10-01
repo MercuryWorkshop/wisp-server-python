@@ -1,5 +1,7 @@
 import argparse
 import asyncio
+import logging
+
 try:
   import uvloop
   use_uvloop = True
@@ -24,10 +26,17 @@ if __name__ == "__main__":
   parser.add_argument("--window", default=60, help="Fixed window length for rate limits, in seconds.")
   parser.add_argument("--allow-loopback", action="store_true",help="Allow connections to loopback IP addresses.")
   parser.add_argument("--allow-private", action="store_true", help="Allow connections to private IP addresses.")
+  parser.add_argument("--log-level", default="info", help="The log level (either debug, info, warning, error, or critical).")
   args = parser.parse_args()
+
+  logging.basicConfig(
+    format="[%(asctime)s] %(levelname)-8s %(message)s",
+    level=getattr(logging, args.log_level.upper()),
+    datefmt="%Y/%m/%d - %H:%M:%S"
+  )
 
   if use_uvloop:
     uvloop.run(wisp.server.http.main(args))
   else:
-    print("Warning: Importing uvloop failed. Falling back to asyncio, which is slower.")
+    logging.error("Importing uvloop failed. Falling back to asyncio, which is slower.")
     asyncio.run(wisp.server.http.main(args))

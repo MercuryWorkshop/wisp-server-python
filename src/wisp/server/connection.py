@@ -1,6 +1,7 @@
 import asyncio
 import struct
 import os
+import logging
 
 from websockets.exceptions import ConnectionClosed
 
@@ -32,7 +33,7 @@ class WSProxyConnection:
       self.conn = net.TCPConnection(self.tcp_host, self.tcp_port)
       await self.conn.connect()
     except Exception as e:
-      print(f"Creating a WSProxy stream to {self.tcp_host}:{self.tcp_port} failed: {e}")
+      logging.info(f"Creating a WSProxy stream to {self.tcp_host}:{self.tcp_port} failed: {e}")
       await self.ws.close()
 
   async def handle_ws(self):
@@ -59,11 +60,12 @@ class WSProxyConnection:
     await self.ws.close()
 
 class WispConnection:
-  def __init__(self, ws, path, client_ip):
+  def __init__(self, ws, path, client_ip, id=None):
     self.ws = ws
     self.path = path
     self.active_streams = {}
     self.client_ip = client_ip
+    self.id = id
   
   #send the initial CONTINUE packet
   async def setup(self):
@@ -74,6 +76,7 @@ class WispConnection:
   async def new_stream(self, stream_id, payload):
     stream_type, destination_port = struct.unpack(connect_format, payload[:3])
     hostname = payload[3:].decode()
+    logging.debug(f"({self.id}) Creating a new stream to {hostname}:{destination_port}")
 
     #rate limited
     stream_count = ratelimit.get_client_attr(self.client_ip, "streams")
@@ -94,7 +97,7 @@ class WispConnection:
       await connection.connect()
         
     except Exception as e:
-      print(f"Creating a new stream to {hostname}:{destination_port} failed: {e}")
+      logging.warn(f"({self.id}) Creating a new stream to {hostname}:{destination_port} failed: {e}")
       await self.send_close_packet(stream_id, 0x42)
       self.close_stream(stream_id)
       return
@@ -112,7 +115,7 @@ class WispConnection:
       await target_func(*args, **kwargs)
     except asyncio.CancelledError as e:
       raise e
-  
+        
   async def stream_ws_to_tcp(self, stream_id):
     #this infinite loop should get killed by the task.cancel call later on
     while True: 
@@ -137,7 +140,7 @@ class WispConnection:
       try:
         data = await stream["conn"].recv()
       except Exception as e:
-        print(f"Receiving data from stream failed: {e}")
+        logging.warn(f"({self.id}) Receiving data from stream failed: {e}")
         await self.send_close_packet(stream_id, 0x03)
         self.close_stream(stream_id)
         return
@@ -183,7 +186,7 @@ class WispConnection:
       except ConnectionClosed:
         break
       except Exception as e:
-        print(f"Receiving data from websocket failed: {e}")
+        logging.warn(f"({self.id}) Receiving data from websocket failed: {e}")
         break
 
       if not isinstance(data, bytes): 

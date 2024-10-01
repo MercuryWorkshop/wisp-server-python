@@ -21,8 +21,9 @@ pip3 install wisp-python
 To start the server, run `python3 -m wisp.server`. The program accepts the following arguments:
 ```
 usage: wisp-server-python [-h] [--host HOST] [--port PORT] [--static STATIC] [--limits] [--bandwidth BANDWIDTH] [--connections CONNECTIONS] [--window WINDOW] [--allow-loopback] [--allow-private]
+                          [--log-level LOG_LEVEL]
 
-A Wisp server implementation, written in Python (v0.4.1)
+A Wisp server implementation, written in Python (v0.5.0)
 
 options:
   -h, --help            show this help message and exit
@@ -37,6 +38,8 @@ options:
   --window WINDOW       Fixed window length for rate limits, in seconds.
   --allow-loopback      Allow connections to loopback IP addresses.
   --allow-private       Allow connections to private IP addresses.
+  --log-level LOG_LEVEL
+                        The log level (either debug, info, warning, error, or critical).
 ```
 
 ## Roadmap:

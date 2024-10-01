@@ -1,6 +1,8 @@
 import asyncio
 import pathlib
 import mimetypes
+import logging
+import random
 
 from websockets.server import serve
 
@@ -14,11 +16,12 @@ async def connection_handler(websocket, path):
   if client_ip == "127.0.0.1" and "X-Real-IP" in websocket.request_headers:
     client_ip = websocket.request_headers["X-Real-IP"]
 
-  print(f"incoming connection on {path} from {client_ip}")
+  conn_id = "".join(random.choices("1234567890abcdef", k=8))
+  logging.info(f"({conn_id}) incoming connection on {path} from {client_ip}")
   ratelimit.inc_client_attr(client_ip, "streams")
 
   if path.endswith("/"):
-    wisp_conn = connection.WispConnection(websocket, path, client_ip)
+    wisp_conn = connection.WispConnection(websocket, path, client_ip, conn_id)
     await wisp_conn.setup()
     ws_handler = asyncio.create_task(wisp_conn.handle_ws()) 
     await asyncio.gather(ws_handler)
@@ -57,18 +60,18 @@ async def static_handler(path, request_headers):
 
 async def main(args):
   global static_path
-  print(f"running wisp-server-python v{wisp.version}")
+  logging.info(f"running wisp-server-python v{wisp.version}")
 
   if args.static:
     static_path = pathlib.Path(args.static).resolve()
     request_handler = static_handler
     mimetypes.init()
-    print(f"serving static files from {static_path}")
+    logging.info(f"serving static files from {static_path}")
   else:
     request_handler = None
   
   if args.limits:
-    print("enabled rate limits")
+    logging.info("enabled rate limits")
     ratelimit.enabled = True
     ratelimit.connections_limit = int(args.connections)
     ratelimit.bandwidth_limit = float(args.bandwidth)
@@ -78,6 +81,10 @@ async def main(args):
   net.block_private = not args.allow_private
       
   limit_task = asyncio.create_task(ratelimit.reset_limits_timer())
-  print(f"listening on {args.host}:{args.port}")
+  logging.info(f"listening on {args.host}:{args.port}")
+
+  ws_logger = logging.getLogger("websockets")
+  ws_logger.setLevel(logging.WARN)
+
   async with serve(connection_handler, args.host, int(args.port), process_request=request_handler, compression=None):
     await asyncio.Future()
