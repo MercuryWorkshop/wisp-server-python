@@ -15,9 +15,10 @@ async def connection_handler(websocket, path):
   client_ip = websocket.remote_address[0]
   if client_ip == "127.0.0.1" and "X-Real-IP" in websocket.request_headers:
     client_ip = websocket.request_headers["X-Real-IP"]
+  origin = websocket.request_headers.get("Origin")
 
   conn_id = "".join(random.choices("1234567890abcdef", k=8))
-  logging.info(f"({conn_id}) incoming connection on {path} from {client_ip}")
+  logging.info(f"({conn_id}) incoming connection on {path} from {client_ip} (origin: {origin})")
   ratelimit.inc_client_attr(client_ip, "streams")
 
   if path.endswith("/"):

@@ -1,2 +1,4 @@
 from wisp import server
-version = "0.5.0"
+from wisp import util
+
+version = util.get_version()
