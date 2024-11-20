@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import logging
+import sys
 
 try:
   import uvloop
@@ -38,5 +39,7 @@ if __name__ == "__main__":
   if use_uvloop:
     uvloop.run(wisp.server.http.main(args))
   else:
-    logging.error("Importing uvloop failed. Falling back to asyncio, which is slower.")
+    #uvloop doesn't support windows at all so we don't need to print the error
+    if not sys.platform in ("win32", "cygwin"):
+      logging.error("Importing uvloop failed. Falling back to asyncio, which is slower.")
     asyncio.run(wisp.server.http.main(args))
