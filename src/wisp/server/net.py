@@ -47,6 +47,7 @@ class TCPConnection:
   def close(self):
     if self.socket is None:
       return
+    self.socket.shutdown(socket.SHUT_RDWR)
     self.socket.close()
 
 class UDPConnection:
@@ -70,4 +71,5 @@ class UDPConnection:
   def close(self):
     if self.socket is None:
       return
+    self.socket.shutdown(socket.SHUT_RDWR)
     self.socket.close()

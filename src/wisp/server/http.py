@@ -1,4 +1,5 @@
 import threading
+import multiprocessing
 import pathlib
 import mimetypes
 import logging
@@ -14,6 +15,7 @@ from wisp.server import ratelimit
 from wisp.server import net
 
 static_path = None
+connections = {}
 
 def connection_handler(websocket):
   path = websocket.request.path
@@ -28,8 +30,10 @@ def connection_handler(websocket):
 
   if path.endswith("/"):
     wisp_conn = connection.WispConnection(websocket, path, client_ip, conn_id)
+    connections[websocket] = wisp_conn
     wisp_conn.setup()
     wisp_conn.handle_ws()
+    del connections[websocket]
 
   else:
     stream_count = ratelimit.get_client_attr(client_ip, "streams")
@@ -95,4 +99,6 @@ def main(args):
     try:
       server.serve_forever()
     except KeyboardInterrupt:
-      pass
+      for connection in connections.values():
+        connection.close()
+      server.shutdown()

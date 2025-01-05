@@ -73,10 +73,16 @@ class WispConnection:
     continue_payload = struct.pack(continue_format, queue_size)
     continue_packet = struct.pack(packet_format, 0x03, 0) + continue_payload
     self.ws.send(continue_packet)
+  
+  def close(self):
+    #close all active streams when the websocket disconnects
+    for stream_id in list(self.active_streams.keys()):
+      self.close_stream(stream_id)
+    self.ws.close()
 
   def new_stream(self, stream_id, payload):
     stream_type, destination_port = struct.unpack(connect_format, payload[:3])
-    hostname = payload[3:].decode()
+    hostname = bytes(payload[3:]).decode()
     logging.debug(f"({self.id}) Creating a new stream to {hostname}:{destination_port}")
 
     #rate limited
@@ -140,10 +146,10 @@ class WispConnection:
         
       if len(data) == 0: #connection closed
         break
-      data_packet = struct.pack(packet_format, 0x02, stream_id) + data
+      data_header = struct.pack(packet_format, 0x02, stream_id)
 
-      ratelimit.limit_client_bandwidth(self.client_ip, len(data_packet), "tcp")
-      self.ws.send(data_packet)
+      ratelimit.limit_client_bandwidth(self.client_ip, len(data_header)+len(data), "tcp")
+      self.ws.send(data_header + data)
 
     self.send_close_packet(stream_id, 0x02)
     self.close_stream(stream_id)
@@ -185,7 +191,7 @@ class WispConnection:
       ratelimit.limit_client_bandwidth(self.client_ip, len(data), "ws")
       
       #get basic packet info
-      payload = data[5:]
+      payload = memoryview(data)[5:]
       packet_type, stream_id = struct.unpack(packet_format, data[:5])
 
       if packet_type == 0x01: #CONNECT packet
@@ -206,7 +212,5 @@ class WispConnection:
       elif packet_type == 0x04: #CLOSE packet
         reason = struct.unpack(close_format, payload)[0]
         self.close_stream(stream_id)
-  
-    #close all active streams when the websocket disconnects
-    for stream_id in list(self.active_streams.keys()):
-      self.close_stream(stream_id)
+
+    self.close()
