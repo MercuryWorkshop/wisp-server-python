@@ -9,7 +9,7 @@ except ImportError:
   use_uvloop = False
 
 import wisp
-import wisp.server.http
+import wisp.server.threading.http
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(
@@ -35,4 +35,4 @@ if __name__ == "__main__":
     datefmt="%Y/%m/%d - %H:%M:%S"
   )
 
-  wisp.server.http.main(args)
+  wisp.server.threading.http.main(args)

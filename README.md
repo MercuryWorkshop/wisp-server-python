@@ -18,7 +18,7 @@ pip3 install wisp-python
 ```
 
 ## Running the Server:
-To start the server, run `python3 -m wisp.server`. The program accepts the following arguments:
+To start the server, run `python3 -m wisp.server.threading`. The program accepts the following arguments:
 ```
 usage: wisp-server-python [-h] [--host HOST] [--port PORT] [--static STATIC] [--limits] [--bandwidth BANDWIDTH] [--connections CONNECTIONS] [--window WINDOW] [--allow-loopback] [--allow-private]
                           [--log-level LOG_LEVEL]

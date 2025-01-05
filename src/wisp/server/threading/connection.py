@@ -6,8 +6,8 @@ import threading
 
 from websockets.exceptions import ConnectionClosed
 
-from wisp.server import ratelimit
-from wisp.server import net
+from wisp.server.threading import ratelimit
+from wisp.server.threading import net
 
 queue_size = 128
 static_path = None

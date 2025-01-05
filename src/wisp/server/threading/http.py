@@ -10,9 +10,9 @@ from websockets.sync.server import serve
 from websockets.http11 import Response, Headers
 
 import wisp
-from wisp.server import connection
-from wisp.server import ratelimit
-from wisp.server import net
+from wisp.server.threading import connection
+from wisp.server.threading import ratelimit
+from wisp.server.threading import net
 
 static_path = None
 connections = {}
@@ -72,7 +72,7 @@ def static_handler(connection, request):
 
 def main(args):
   global static_path
-  logging.info(f"running wisp-server-python v{wisp.version}")
+  logging.info(f"running wisp-server-python v{wisp.version} (threading)")
 
   if args.static:
     static_path = pathlib.Path(args.static).resolve()
