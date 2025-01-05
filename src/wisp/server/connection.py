@@ -1,7 +1,8 @@
-import asyncio
 import struct
 import os
 import logging
+import queue
+import threading
 
 from websockets.exceptions import ConnectionClosed
 
@@ -24,40 +25,40 @@ class WSProxyConnection:
     self.path = path
     self.client_ip = client_ip
 
-  async def setup_connection(self):
+  def setup_connection(self):
     addr_str = self.path.split("/")[-1]
     self.tcp_host, self.tcp_port = addr_str.split(":")
     self.tcp_port = int(self.tcp_port)
 
     try:
       self.conn = net.TCPConnection(self.tcp_host, self.tcp_port)
-      await self.conn.connect()
+      self.conn.connect()
     except Exception as e:
       logging.info(f"Creating a WSProxy stream to {self.tcp_host}:{self.tcp_port} failed: {e}")
-      await self.ws.close()
+      self.ws.close()
 
-  async def handle_ws(self):
+  def handle_ws(self):
     while True:
       try:
-        data = await self.ws.recv()
+        data = self.ws.recv()
       except ConnectionClosed:
         break
 
-      await ratelimit.limit_client_bandwidth(self.client_ip, len(data), "ws")
-      await self.conn.send(data)
+      ratelimit.limit_client_bandwidth(self.client_ip, len(data), "ws")
+      self.conn.send(data)
     
-    self.tcp_writer.close()
+    self.conn.close()
   
-  async def handle_tcp(self):
+  def handle_tcp(self):
     while True:
-      data = await self.conn.recv()
+      data = self.conn.recv()
       if len(data) == 0:
         break #socket closed
 
-      await ratelimit.limit_client_bandwidth(self.client_ip, len(data), "tcp")
-      await self.ws.send(data)
+      ratelimit.limit_client_bandwidth(self.client_ip, len(data), "tcp")
+      self.ws.send(data)
     
-    await self.ws.close()
+    self.ws.close()
 
 class WispConnection:
   def __init__(self, ws, path, client_ip, id=None):
@@ -68,12 +69,12 @@ class WispConnection:
     self.id = id
   
   #send the initial CONTINUE packet
-  async def setup(self):
+  def setup(self):
     continue_payload = struct.pack(continue_format, queue_size)
     continue_packet = struct.pack(packet_format, 0x03, 0) + continue_payload
-    await self.ws.send(continue_packet)
+    self.ws.send(continue_packet)
 
-  async def new_stream(self, stream_id, payload):
+  def new_stream(self, stream_id, payload):
     stream_type, destination_port = struct.unpack(connect_format, payload[:3])
     hostname = payload[3:].decode()
     logging.debug(f"({self.id}) Creating a new stream to {hostname}:{destination_port}")
@@ -81,7 +82,7 @@ class WispConnection:
     #rate limited
     stream_count = ratelimit.get_client_attr(self.client_ip, "streams")
     if ratelimit.enabled and stream_count > ratelimit.connections_limit:
-      await self.send_close_packet(stream_id, 0x49)
+      self.send_close_packet(stream_id, 0x49)
       self.close_stream(stream_id)
       return
     
@@ -94,35 +95,27 @@ class WispConnection:
       else:
         raise Exception("Invalid stream type.")
       self.active_streams[stream_id]["conn"] = connection
-      await connection.connect()
+      connection.connect()
         
     except Exception as e:
       logging.warn(f"({self.id}) Creating a new stream to {hostname}:{destination_port} failed: {e}")
-      await self.send_close_packet(stream_id, 0x42)
+      self.send_close_packet(stream_id, 0x42)
       self.close_stream(stream_id)
       return
     
     self.active_streams[stream_id]["type"] = stream_type
-    ws_to_tcp_task = asyncio.create_task(self.task_wrapper(self.stream_ws_to_tcp, stream_id))
-    tcp_to_ws_task = asyncio.create_task(self.task_wrapper(self.stream_tcp_to_ws, stream_id))
-    self.active_streams[stream_id]["ws_to_tcp_task"] = ws_to_tcp_task
-    self.active_streams[stream_id]["tcp_to_ws_task"] = tcp_to_ws_task
-
+    threading.Thread(target=self.stream_ws_to_tcp, args=(stream_id,), daemon=True).start()
+    threading.Thread(target=self.stream_tcp_to_ws, args=(stream_id,), daemon=True).start()
     ratelimit.inc_client_attr(self.client_ip, "streams")
   
-  async def task_wrapper(self, target_func, *args, **kwargs):
-    try:
-      await target_func(*args, **kwargs)
-    except asyncio.CancelledError as e:
-      raise e
-        
-  async def stream_ws_to_tcp(self, stream_id):
-    #this infinite loop should get killed by the task.cancel call later on
+  def stream_ws_to_tcp(self, stream_id):
     while True: 
       stream = self.active_streams[stream_id]
-      data = await stream["queue"].get()
+      data = stream["queue"].get()
+      if data is None:
+        break
       try:
-        await stream["conn"].send(data)
+        stream["conn"].send(data)
       except:
         break
 
@@ -132,16 +125,16 @@ class WispConnection:
         buffer_remaining = stream["queue"].maxsize - stream["queue"].qsize()
         continue_payload = struct.pack(continue_format, buffer_remaining)
         continue_packet = struct.pack(packet_format, 0x03, stream_id) + continue_payload
-        await self.ws.send(continue_packet)
+        self.ws.send(continue_packet)
   
-  async def stream_tcp_to_ws(self, stream_id):
+  def stream_tcp_to_ws(self, stream_id):
     while True:
       stream = self.active_streams[stream_id]
       try:
-        data = await stream["conn"].recv()
+        data = stream["conn"].recv()
       except Exception as e:
         logging.warn(f"({self.id}) Receiving data from stream failed: {e}")
-        await self.send_close_packet(stream_id, 0x03)
+        self.send_close_packet(stream_id, 0x03)
         self.close_stream(stream_id)
         return
         
@@ -149,18 +142,18 @@ class WispConnection:
         break
       data_packet = struct.pack(packet_format, 0x02, stream_id) + data
 
-      await ratelimit.limit_client_bandwidth(self.client_ip, len(data_packet), "tcp")
-      await self.ws.send(data_packet)
+      ratelimit.limit_client_bandwidth(self.client_ip, len(data_packet), "tcp")
+      self.ws.send(data_packet)
 
-    await self.send_close_packet(stream_id, 0x02)
+    self.send_close_packet(stream_id, 0x02)
     self.close_stream(stream_id)
   
-  async def send_close_packet(self, stream_id, reason):
+  def send_close_packet(self, stream_id, reason):
     if not stream_id in self.active_streams:
       return
     close_payload = struct.pack(close_format, reason)
     close_packet = struct.pack(packet_format, 0x04, stream_id) + close_payload
-    await self.ws.send(close_packet)
+    self.ws.send(close_packet)
   
   def close_stream(self, stream_id):
     if not stream_id in self.active_streams:
@@ -169,20 +162,16 @@ class WispConnection:
     if stream["conn"]:
       stream["conn"].close()
 
-    #kill the running tasks associated with this stream
-    if not stream["connect_task"].done():
-      stream["connect_task"].cancel() 
-    if stream["ws_to_tcp_task"] is not None and not stream["ws_to_tcp_task"].done():
-      stream["ws_to_tcp_task"].cancel()
-    if stream["tcp_to_ws_task"] is not None and not stream["tcp_to_ws_task"].done():
-      stream["tcp_to_ws_task"].cancel()
-    
+    #empty the queue and kill it
+    while not stream["queue"].empty():
+      stream["queue"].get()
+    stream["queue"].put(None)
     del self.active_streams[stream_id]
   
-  async def handle_ws(self):
+  def handle_ws(self):
     while True:
       try:
-        data = await self.ws.recv()
+        data = self.ws.recv()
       except ConnectionClosed:
         break
       except Exception as e:
@@ -193,29 +182,26 @@ class WispConnection:
         continue #ignore non binary frames
       
       #implement bandwidth limits
-      await ratelimit.limit_client_bandwidth(self.client_ip, len(data), "ws")
+      ratelimit.limit_client_bandwidth(self.client_ip, len(data), "ws")
       
       #get basic packet info
       payload = data[5:]
       packet_type, stream_id = struct.unpack(packet_format, data[:5])
 
       if packet_type == 0x01: #CONNECT packet
-        connect_task = asyncio.create_task(self.task_wrapper(self.new_stream, stream_id, payload))
         self.active_streams[stream_id] = {
           "conn": None,
           "type": None,
-          "queue": asyncio.Queue(queue_size),
-          "connect_task": connect_task,
-          "ws_to_tcp_task": None,
-          "tcp_to_ws_task": None,
+          "queue": queue.Queue(queue_size),
           "packets_sent": 0
         }
+        threading.Thread(target=self.new_stream, args=(stream_id, payload), daemon=True).start()
       
       elif packet_type == 0x02: #DATA packet
         stream = self.active_streams.get(stream_id)
         if not stream:
           continue
-        await stream["queue"].put(payload)
+        stream["queue"].put(payload)
       
       elif packet_type == 0x04: #CLOSE packet
         reason = struct.unpack(close_format, payload)[0]

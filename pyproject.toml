@@ -24,9 +24,7 @@ classifiers = [
   "Operating System :: OS Independent",
 ]
 dependencies = [
-  "websockets",
-  "asyncudp",
-  "uvloop; sys_platform != 'win32' and sys_platform != 'cygwin'"
+  "websockets"
 ]
 
 [project.urls]

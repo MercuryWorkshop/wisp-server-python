@@ -1,21 +1,26 @@
-import asyncio
+import threading
 import pathlib
 import mimetypes
 import logging
 import random
+import sys
 
-from websockets.server import serve
+from websockets.sync.server import serve
+from websockets.http11 import Response, Headers
 
 import wisp
 from wisp.server import connection
 from wisp.server import ratelimit
 from wisp.server import net
 
-async def connection_handler(websocket, path):
+static_path = None
+
+def connection_handler(websocket):
+  path = websocket.request.path
   client_ip = websocket.remote_address[0]
-  if client_ip == "127.0.0.1" and "X-Real-IP" in websocket.request_headers:
-    client_ip = websocket.request_headers["X-Real-IP"]
-  origin = websocket.request_headers.get("Origin")
+  if client_ip == "127.0.0.1" and "X-Real-IP" in websocket.request.headers:
+    client_ip = websocket.request.headers["X-Real-IP"]
+  origin = websocket.request.headers.get("Origin")
 
   conn_id = "".join(random.choices("1234567890abcdef", k=8))
   logging.info(f"({conn_id}) incoming connection on {path} from {client_ip} (origin: {origin})")
@@ -23,53 +28,52 @@ async def connection_handler(websocket, path):
 
   if path.endswith("/"):
     wisp_conn = connection.WispConnection(websocket, path, client_ip, conn_id)
-    await wisp_conn.setup()
-    ws_handler = asyncio.create_task(wisp_conn.handle_ws()) 
-    await asyncio.gather(ws_handler)
+    wisp_conn.setup()
+    wisp_conn.handle_ws()
 
   else:
     stream_count = ratelimit.get_client_attr(client_ip, "streams")
     if ratelimit.enabled and stream_count > ratelimit.connections_limit:
       return
     wsproxy_conn = connection.WSProxyConnection(websocket, path, client_ip)
-    await wsproxy_conn.setup_connection()
-    ws_handler = asyncio.create_task(wsproxy_conn.handle_ws())
-    tcp_handler = asyncio.create_task(wsproxy_conn.handle_tcp())
-    await asyncio.gather(ws_handler, tcp_handler)
+    wsproxy_conn.setup_connection()
+    t1 = threading.Thread(target=wsproxy_conn.handle_ws, daemon=True)
+    t2 = threading.Thread(target=wsproxy_conn.handle_tcp, daemon=True)
+    t1.start(); t2.start()
+    t1.join(); t2.join()
 
-async def static_handler(path, request_headers):
-  if "Upgrade" in request_headers:
+def static_handler(connection, request):
+  if "Upgrade" in request.headers:
     return
     
-  response_headers = [
-    ("Server", f"wisp-server-python v{wisp.version}")
-  ]
-  target_path = static_path / path[1:]
+  response_headers = Headers()
+  response_headers["Server"] = f"wisp-server-python v{wisp.version}"
+  if static_path is None:
+    return Response(204, None, response_headers, body=b"")
+
+  target_path = static_path / request.path[1:]
 
   if target_path.is_dir():
     target_path = target_path / "index.html"
   if not target_path.is_relative_to(static_path):
-    return 403, response_headers, "403 forbidden".encode()
+    return Response(403, None, response_headers, body="403 forbidden".encode())
   if not target_path.exists():
-    return 404, response_headers, "404 not found".encode()
+    return Response(404, None, response_headers, body="404 not found".encode())
   
   mimetype = mimetypes.guess_type(target_path.name)[0]
-  response_headers.append(("Content-Type", mimetype))
+  response_headers["Content-Type"] = mimetype
 
-  static_data = await asyncio.to_thread(target_path.read_bytes)
-  return 200, response_headers, static_data
+  static_data = target_path.read_bytes()
+  return Response(200, None, response_headers, body=static_data)
 
-async def main(args):
+def main(args):
   global static_path
   logging.info(f"running wisp-server-python v{wisp.version}")
 
   if args.static:
     static_path = pathlib.Path(args.static).resolve()
-    request_handler = static_handler
     mimetypes.init()
     logging.info(f"serving static files from {static_path}")
-  else:
-    request_handler = None
   
   if args.limits:
     logging.info("enabled rate limits")
@@ -81,11 +85,14 @@ async def main(args):
   net.block_loopback = not args.allow_loopback
   net.block_private = not args.allow_private
       
-  limit_task = asyncio.create_task(ratelimit.reset_limits_timer())
+  threading.Thread(target=ratelimit.reset_limits_timer, daemon=True).start()
   logging.info(f"listening on {args.host}:{args.port}")
 
   ws_logger = logging.getLogger("websockets")
   ws_logger.setLevel(logging.WARN)
 
-  async with serve(connection_handler, args.host, int(args.port), process_request=request_handler, compression=None):
-    await asyncio.Future()
+  with serve(connection_handler, args.host, int(args.port), process_request=static_handler, compression=None) as server:
+    try:
+      server.serve_forever()
+    except KeyboardInterrupt:
+      pass
