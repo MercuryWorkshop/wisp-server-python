@@ -18,7 +18,13 @@ pip3 install wisp-python
 ```
 
 ## Running the Server:
-To start the server, run `python3 -m wisp.server.threading`. The program accepts the following arguments:
+There are two different versions of the server:
+- Async (`wisp.server`) - The default, based on asyncio. It is more stable, but slower.
+- Threading (`wisp.server.threading`) - An faster alternative based on threading. It is about 40-80% faster, but possibly unstable. If you use Python's experimental [free threading](https://docs.python.org/3/howto/free-threading-python.html) builds, performance will scale linearly with your available CPU cores.
+
+For the best performance use [CPython](https://github.com/python/cpython) 3.11 or newer. [PyPy](https://github.com/pypy/pypy) is not recommended as it is a lot slower than CPython here. 
+
+To start the server, run `python3 -m wisp.server` (or `python3 -m wisp.server.threading`). The program accepts the following arguments:
 ```
 usage: wisp-server-python [-h] [--host HOST] [--port PORT] [--static STATIC] [--limits] [--bandwidth BANDWIDTH] [--connections CONNECTIONS] [--window WINDOW] [--allow-loopback] [--allow-private]
                           [--log-level LOG_LEVEL]
@@ -47,6 +53,7 @@ options:
 - JSON based config files
 - ~~UDP support~~
 - ~~Ability to block local addresses~~
+- Wisp v2 support
 
 ## Copyright:
 This repository is licensed under the GNU AGPL v3.
