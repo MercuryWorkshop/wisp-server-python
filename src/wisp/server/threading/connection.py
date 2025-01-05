@@ -6,8 +6,8 @@ import threading
 
 from websockets.exceptions import ConnectionClosed
 
-from wisp.server.threading import ratelimit
-from wisp.server.threading import net
+from wisp.server import ratelimit
+from wisp.server.threading import netsync
 
 queue_size = 128
 static_path = None
@@ -31,7 +31,7 @@ class WSProxyConnection:
     self.tcp_port = int(self.tcp_port)
 
     try:
-      self.conn = net.TCPConnection(self.tcp_host, self.tcp_port)
+      self.conn = netsync.TCPConnection(self.tcp_host, self.tcp_port)
       self.conn.connect()
     except Exception as e:
       logging.info(f"Creating a WSProxy stream to {self.tcp_host}:{self.tcp_port} failed: {e}")
@@ -44,7 +44,7 @@ class WSProxyConnection:
       except ConnectionClosed:
         break
 
-      ratelimit.limit_client_bandwidth(self.client_ip, len(data), "ws")
+      ratelimit.limit_client_bandwidth_sync(self.client_ip, len(data), "ws")
       self.conn.send(data)
     
     self.conn.close()
@@ -55,7 +55,7 @@ class WSProxyConnection:
       if len(data) == 0:
         break #socket closed
 
-      ratelimit.limit_client_bandwidth(self.client_ip, len(data), "tcp")
+      ratelimit.limit_client_bandwidth_sync(self.client_ip, len(data), "tcp")
       self.ws.send(data)
     
     self.ws.close()
@@ -95,9 +95,9 @@ class WispConnection:
     #info looks valid - try to open the connection now
     try:
       if stream_type == 0x01:
-        connection = net.TCPConnection(hostname, destination_port)
+        connection = netsync.TCPConnection(hostname, destination_port)
       elif stream_type == 0x02: 
-        connection = net.UDPConnection(hostname, destination_port)
+        connection = netsync.UDPConnection(hostname, destination_port)
       else:
         raise Exception("Invalid stream type.")
       self.active_streams[stream_id]["conn"] = connection
@@ -148,7 +148,7 @@ class WispConnection:
         break
       data_header = struct.pack(packet_format, 0x02, stream_id)
 
-      ratelimit.limit_client_bandwidth(self.client_ip, len(data_header)+len(data), "tcp")
+      ratelimit.limit_client_bandwidth_sync(self.client_ip, len(data_header)+len(data), "tcp")
       self.ws.send(data_header + data)
 
     self.send_close_packet(stream_id, 0x02)
@@ -188,7 +188,7 @@ class WispConnection:
         continue #ignore non binary frames
       
       #implement bandwidth limits
-      ratelimit.limit_client_bandwidth(self.client_ip, len(data), "ws")
+      ratelimit.limit_client_bandwidth_sync(self.client_ip, len(data), "ws")
       
       #get basic packet info
       payload = memoryview(data)[5:]

@@ -61,7 +61,7 @@ async def static_handler(path, request_headers):
 
 async def main(args):
   global static_path
-  logging.info(f"running wisp-server-python v{wisp.version}")
+  logging.info(f"running wisp-server-python v{wisp.version} (async)")
 
   if args.static:
     static_path = pathlib.Path(args.static).resolve()

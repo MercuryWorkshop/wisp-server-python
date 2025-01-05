@@ -10,9 +10,9 @@ from websockets.sync.server import serve
 from websockets.http11 import Response, Headers
 
 import wisp
+from wisp.server import ratelimit
+from wisp.server import net
 from wisp.server.threading import connection
-from wisp.server.threading import ratelimit
-from wisp.server.threading import net
 
 static_path = None
 connections = {}
@@ -89,7 +89,7 @@ def main(args):
   net.block_loopback = not args.allow_loopback
   net.block_private = not args.allow_private
       
-  threading.Thread(target=ratelimit.reset_limits_timer, daemon=True).start()
+  threading.Thread(target=ratelimit.reset_limits_timer_sync, daemon=True).start()
   logging.info(f"listening on {args.host}:{args.port}")
 
   ws_logger = logging.getLogger("websockets")

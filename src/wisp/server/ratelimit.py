@@ -52,3 +52,15 @@ async def reset_limits_timer():
   while True:
     active_clients = {}
     await asyncio.sleep(window_size)
+
+def limit_client_bandwidth_sync(client_ip, length, attr):
+  if not enabled: return
+  inc_client_attr(client_ip, attr, length)
+  while calculate_client_bandwidth(client_ip, attr) > bandwidth_limit:
+    time.sleep(0.01)
+
+def reset_limits_timer_sync():
+  global active_clients
+  while True:
+    active_clients = {}
+    time.sleep(window_size)
