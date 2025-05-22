@@ -4,7 +4,7 @@ import logging
 import queue
 import threading
 
-from websockets.exceptions import ConnectionClosed
+from websockets.exceptions import ConnectionClosed, ConnectionClosedError
 
 from wisp.server import ratelimit
 from wisp.server.threading import netsync
@@ -41,7 +41,7 @@ class WSProxyConnection:
     while True:
       try:
         data = self.ws.recv()
-      except ConnectionClosed:
+      except (ConnectionClosed, ConnectionClosedError) as e:
         break
 
       ratelimit.limit_client_bandwidth_sync(self.client_ip, len(data), "ws")
@@ -127,7 +127,7 @@ class WispConnection:
 
       #send a CONTINUE packet periodically
       stream["packets_sent"] += 1
-      if stream["packets_sent"] % queue_size / 4 == 0:
+      if stream["packets_sent"] % (queue_size // 4) == 0:
         buffer_remaining = stream["queue"].maxsize - stream["queue"].qsize()
         continue_payload = struct.pack(continue_format, buffer_remaining)
         continue_packet = struct.pack(packet_format, 0x03, stream_id) + continue_payload
@@ -149,7 +149,10 @@ class WispConnection:
       data_header = struct.pack(packet_format, 0x02, stream_id)
 
       ratelimit.limit_client_bandwidth_sync(self.client_ip, len(data_header)+len(data), "tcp")
-      self.ws.send(data_header + data)
+      try:
+        self.ws.send(data_header + data)
+      except (ConnectionClosed, ConnectionClosedError) as e:
+        return
 
     self.send_close_packet(stream_id, 0x02)
     self.close_stream(stream_id)
@@ -178,7 +181,7 @@ class WispConnection:
     while True:
       try:
         data = self.ws.recv()
-      except ConnectionClosed:
+      except (ConnectionClosed, ConnectionClosedError):
         break
       except Exception as e:
         logging.warn(f"({self.id}) Receiving data from websocket failed: {e}")

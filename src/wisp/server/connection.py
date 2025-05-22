@@ -128,7 +128,7 @@ class WispConnection:
 
       #send a CONTINUE packet periodically
       stream["packets_sent"] += 1
-      if stream["packets_sent"] % queue_size / 4 == 0:
+      if stream["packets_sent"] % (queue_size // 4) == 0:
         buffer_remaining = stream["queue"].maxsize - stream["queue"].qsize()
         continue_payload = struct.pack(continue_format, buffer_remaining)
         continue_packet = struct.pack(packet_format, 0x03, stream_id) + continue_payload
