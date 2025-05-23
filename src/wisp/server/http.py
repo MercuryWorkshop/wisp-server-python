@@ -61,18 +61,15 @@ async def static_handler(path, request_headers):
 
 async def main(args):
   global static_path
-  logging.info(f"running wisp-server-python v{wisp.version} (async)")
 
   if args.static:
     static_path = pathlib.Path(args.static).resolve()
     request_handler = static_handler
     mimetypes.init()
-    logging.info(f"serving static files from {static_path}")
   else:
     request_handler = None
   
   if args.limits:
-    logging.info("enabled rate limits")
     ratelimit.enabled = True
     ratelimit.connections_limit = int(args.connections)
     ratelimit.bandwidth_limit = float(args.bandwidth)
@@ -82,10 +79,9 @@ async def main(args):
   net.block_private = not args.allow_private
       
   limit_task = asyncio.create_task(ratelimit.reset_limits_timer())
-  logging.info(f"listening on {args.host}:{args.port}")
 
   ws_logger = logging.getLogger("websockets")
   ws_logger.setLevel(logging.WARN)
 
-  async with serve(connection_handler, args.host, int(args.port), process_request=request_handler, compression=None):
+  async with serve(connection_handler, args.host, int(args.port), reuse_port=True, process_request=request_handler, compression=None):
     await asyncio.Future()

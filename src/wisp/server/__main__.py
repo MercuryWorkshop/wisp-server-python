@@ -2,6 +2,7 @@ import argparse
 import logging
 import asyncio
 import sys
+import multiprocessing
 
 try:
   import uvloop
@@ -12,7 +13,23 @@ except ImportError:
 import wisp
 from wisp.server import http 
 
+def run_async(func, *args, **kwargs):
+  try:
+    if use_uvloop:
+      uvloop.run(func(*args, **kwargs))
+    else:
+      #uvloop doesn't support windows at all so we don't need to print the error
+      if not sys.platform in ("win32", "cygwin"):
+        logging.error("Importing uvloop failed. Falling back to asyncio, which is slower.")
+      asyncio.run(func(*args, **kwargs))
+  except KeyboardInterrupt:
+    pass
+
+def run_main(args):
+  run_async(http.main, args)
+
 if __name__ == "__main__":
+  global args
   parser = argparse.ArgumentParser(
     prog="wisp-server-python",
     description=f"A Wisp server implementation, written in Python (v{wisp.version})"
@@ -25,9 +42,10 @@ if __name__ == "__main__":
   parser.add_argument("--bandwidth", default=1000, help="Bandwidth limit per IP, in kilobytes per second.")
   parser.add_argument("--connections", default=30, help="New connections limit per IP.")
   parser.add_argument("--window", default=60, help="Fixed window length for rate limits, in seconds.")
-  parser.add_argument("--allow-loopback", action="store_true",help="Allow connections to loopback IP addresses.")
+  parser.add_argument("--allow-loopback", action="store_true", help="Allow connections to loopback IP addresses.")
   parser.add_argument("--allow-private", action="store_true", help="Allow connections to private IP addresses.")
   parser.add_argument("--log-level", default="info", help="The log level (either debug, info, warning, error, or critical).")
+  parser.add_argument("--threads", default=0, help="The number of threads to run the server on. By default it uses all CPU cores.")
   args = parser.parse_args()
 
   logging.basicConfig(
@@ -36,13 +54,26 @@ if __name__ == "__main__":
     datefmt="%Y/%m/%d - %H:%M:%S"
   )
 
+  logging.info(f"running wisp-server-python v{wisp.version} (async)")
+  if args.static:
+    static_path = pathlib.Path(args.static).resolve()
+    logging.info(f"serving static files from {static_path}")
+  if args.limits:
+    logging.info("enabled rate limits")
+  logging.info(f"listening on {args.host}:{args.port}")
+
+  threads = int(args.threads)
+  if threads == 0:
+    threads = multiprocessing.cpu_count()
+  logging.info(f"running using {threads} threads")
+
+  processes = []
+  for i in range(0, int(threads)):
+    process = multiprocessing.Process(target=run_main, args=(args,), daemon=True)
+    processes.append(process)
+    process.start()
   try:
-    if use_uvloop:
-      uvloop.run(http.main(args))
-    else:
-      #uvloop doesn't support windows at all so we don't need to print the error
-      if not sys.platform in ("win32", "cygwin"):
-        logging.error("Importing uvloop failed. Falling back to asyncio, which is slower.")
-      asyncio.run(http.main(args))
+    for process in processes:
+      process.join()
   except KeyboardInterrupt:
-    print("\nExiting due to KeyboardInterrupt.")
+    pass
