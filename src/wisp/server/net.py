@@ -9,6 +9,9 @@ tcp_size = 64*1024
 block_loopback = False
 block_private = False
 
+def reuse_port_supported():
+  return hasattr(socket, "SO_REUSEPORT")
+
 def get_ip(host, port, stream_type):
   if stream_type == 0x01:
     proto = socket.IPPROTO_TCP

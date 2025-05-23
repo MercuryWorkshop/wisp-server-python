@@ -13,6 +13,7 @@ except ImportError:
 
 import wisp
 from wisp.server import http 
+from wisp.server import net
 
 def run_async(func, *args, **kwargs):
   try:
@@ -63,17 +64,23 @@ def main():
   logging.info(f"listening on {args.host}:{args.port}")
 
   threads = int(args.threads)
-  if threads == 0:
-    threads = multiprocessing.cpu_count()
-  logging.info(f"running using {threads} threads")
+  if net.reuse_port_supported():
+    if threads == 0:
+      threads = multiprocessing.cpu_count()
+    logging.info(f"running using {threads} threads")
 
-  processes = []
-  for i in range(0, int(threads)):
-    process = multiprocessing.Process(target=run_http, args=(args,), daemon=True)
-    processes.append(process)
-    process.start()
-  try:
-    for process in processes:
-      process.join()
-  except KeyboardInterrupt:
-    pass
+    processes = []
+    for i in range(0, int(threads)):
+      process = multiprocessing.Process(target=run_http, args=(args,), daemon=True)
+      processes.append(process)
+      process.start()
+    try:
+      for process in processes:
+        process.join()
+    except KeyboardInterrupt:
+      pass
+  
+  else:
+    if threads != 0:
+      logging.warn("the --threads option is not supported on this platform")
+    run_http(args)

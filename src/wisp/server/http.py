@@ -79,9 +79,10 @@ async def main(args):
   net.block_private = not args.allow_private
       
   limit_task = asyncio.create_task(ratelimit.reset_limits_timer())
-
   ws_logger = logging.getLogger("websockets")
   ws_logger.setLevel(logging.WARN)
 
-  async with serve(connection_handler, args.host, int(args.port), reuse_port=True, process_request=request_handler, compression=None):
+  reuse_port = net.reuse_port_supported()
+
+  async with serve(connection_handler, args.host, int(args.port), reuse_port=reuse_port, process_request=request_handler, compression=None):
     await asyncio.Future()
