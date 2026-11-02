@@ -20,12 +20,21 @@ pip3 install wisp-python
 ## Running the Server:
 For the best performance use [CPython](https://github.com/python/cpython) 3.11 or newer. [PyPy](https://github.com/pypy/pypy) is not recommended as it is a lot slower than CPython here. 
 
+If you are running this server publicly, you should start it with the `--limits` flag to enable rate limits and other anti abuse protections. The `--blacklist` option can also be used to block specific destinations.
+
 To start the server, run `python3 -m wisp.server`. The program accepts the following arguments:
 ```
-usage: wisp-server-python [-h] [--host HOST] [--port PORT] [--static STATIC] [--limits] [--bandwidth BANDWIDTH] [--connections CONNECTIONS] [--window WINDOW] [--allow-loopback] [--allow-private] [--log-level LOG_LEVEL]
-                          [--threads THREADS] [--proxy PROXY] [--block-udp] [--block-tcp]
+usage: wisp-server-python [-h] [--host HOST] [--port PORT] [--static STATIC]
+                          [--limits] [--bandwidth BANDWIDTH]
+                          [--connections CONNECTIONS]
+                          [--max-connections MAX_CONNECTIONS]
+                          [--total-connections TOTAL_CONNECTIONS]
+                          [--window WINDOW] [--allow-loopback]
+                          [--allow-private] [--log-level LOG_LEVEL]
+                          [--threads THREADS] [--proxy PROXY] [--block-udp]
+                          [--block-tcp] [--blacklist BLACKLIST]
 
-A Wisp server implementation, written in Python (v0.8.3)
+A Wisp server implementation, written in Python (v0.9.0)
 
 options:
   -h, --help            show this help message and exit
@@ -37,16 +46,27 @@ options:
                         Bandwidth limit per IP, in kilobytes per second.
   --connections CONNECTIONS
                         New connections limit per IP.
+  --max-connections MAX_CONNECTIONS
+                        Concurrent open connections limit per IP.
+  --total-connections TOTAL_CONNECTIONS
+                        Concurrent open connections limit across all IPs.
   --window WINDOW       Fixed window length for rate limits, in seconds.
   --allow-loopback      Allow connections to loopback IP addresses.
   --allow-private       Allow connections to private IP addresses.
   --log-level LOG_LEVEL
-                        The log level (either debug, info, warning, error, or critical).
-  --threads THREADS     The number of threads to run the server on. By default it uses all CPU cores. (Linux only)
-  --proxy PROXY         The url of the socks5h, socks5, sock4a, socks4 or http proxy to use.
+                        The log level (either debug, info, warning, error, or
+                        critical).
+  --threads THREADS     The number of threads to run the server on. By default
+                        it uses all CPU cores. (Linux only)
+  --proxy PROXY         The url of the socks5h, socks5, sock4a, socks4 or http
+                        proxy to use.
   --block-udp           Block UDP streams.
   --block-tcp           Block TCP streams.
-```
+  --blacklist BLACKLIST
+                        The path of a blacklist file with blacklisted
+                        destinations. One destination per line, and it can be
+                        a hostname, an ip address, or an ip range in cidr
+                        notation. Lines starting with # are ignored.
 
 ## Roadmap:
 - ~~Rate limits~~
