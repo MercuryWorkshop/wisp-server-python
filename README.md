@@ -73,7 +73,7 @@ A few third party libraries are used. See [`LICENSE_third_party.md`](https://git
 ### Copyright Notice:
 ```
 wisp-server-python: a Wisp server implementation written in Python
-Copyright (C) 2025 Mercury Workshop
+Copyright (C) 2026 Mercury Workshop
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published by
