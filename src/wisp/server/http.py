@@ -19,6 +19,7 @@ default_html = f"""
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width">
+    <meta name="robots" content="noindex">
     <title>wisp-server-python v{wisp.version}</title>
     <style>
       html {{

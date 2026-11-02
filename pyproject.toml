@@ -11,7 +11,8 @@ package-dir = {"" = "src"}
 
 [project]
 name = "wisp-python"
-version = "0.9.0"
+version = "0.9.1"
+license = "AGPL-3.0-or-later"
 authors = [
   {name="ading2210"},
 ]
@@ -20,7 +21,6 @@ readme = "README.md"
 requires-python = ">=3.9"
 classifiers = [
   "Programming Language :: Python :: 3",
-  "License :: OSI Approved :: GNU Affero General Public License v3",
   "Operating System :: OS Independent",
 ]
 dependencies = [
