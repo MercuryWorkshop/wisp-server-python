@@ -24,14 +24,8 @@ If you are running this server publicly, you should start it with the `--limits`
 
 To start the server, run `python3 -m wisp.server`. The program accepts the following arguments:
 ```
-usage: wisp-server-python [-h] [--host HOST] [--port PORT] [--static STATIC]
-                          [--limits] [--bandwidth BANDWIDTH]
-                          [--connections CONNECTIONS]
-                          [--max-connections MAX_CONNECTIONS]
-                          [--total-connections TOTAL_CONNECTIONS]
-                          [--window WINDOW] [--allow-loopback]
-                          [--allow-private] [--log-level LOG_LEVEL]
-                          [--threads THREADS] [--proxy PROXY] [--block-udp]
+usage: wisp-server-python [-h] [--host HOST] [--port PORT] [--static STATIC] [--limits] [--bandwidth BANDWIDTH] [--connections CONNECTIONS] [--max-connections MAX_CONNECTIONS]
+                          [--total-connections TOTAL_CONNECTIONS] [--window WINDOW] [--allow-loopback] [--allow-private] [--log-level LOG_LEVEL] [--threads THREADS] [--proxy PROXY] [--block-udp]
                           [--block-tcp] [--blacklist BLACKLIST]
 
 A Wisp server implementation, written in Python (v0.9.0)
@@ -54,19 +48,15 @@ options:
   --allow-loopback      Allow connections to loopback IP addresses.
   --allow-private       Allow connections to private IP addresses.
   --log-level LOG_LEVEL
-                        The log level (either debug, info, warning, error, or
-                        critical).
-  --threads THREADS     The number of threads to run the server on. By default
-                        it uses all CPU cores. (Linux only)
-  --proxy PROXY         The url of the socks5h, socks5, sock4a, socks4 or http
-                        proxy to use.
+                        The log level (either debug, info, warning, error, or critical).
+  --threads THREADS     The number of threads to run the server on. By default it uses all CPU cores. (Linux only)
+  --proxy PROXY         The url of the socks5h, socks5, sock4a, socks4 or http proxy to use.
   --block-udp           Block UDP streams.
   --block-tcp           Block TCP streams.
   --blacklist BLACKLIST
-                        The path of a blacklist file with blacklisted
-                        destinations. One destination per line, and it can be
-                        a hostname, an ip address, or an ip range in cidr
-                        notation. Lines starting with # are ignored.
+                        The path of a blacklist file with blacklisted destinations. One destination per line, and it can be a hostname, an ip address, or an ip range in cidr notation. Lines starting
+                        with # are ignored.
+```
 
 ## Roadmap:
 - ~~Rate limits~~
