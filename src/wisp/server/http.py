@@ -80,14 +80,21 @@ async def connection_handler(websocket, path):
     await asyncio.gather(ws_handler)
 
   else:
+    #check the rate limits before connecting to the target
     stream_count = ratelimit.get_client_attr(client_ip, "streams")
     if ratelimit.enabled and stream_count > ratelimit.connections_limit:
       return
+    if not ratelimit.open_connection(client_ip):
+      return
+
     wsproxy_conn = connection.WSProxyConnection(websocket, path, client_ip)
-    await wsproxy_conn.setup_connection()
-    ws_handler = asyncio.create_task(wsproxy_conn.handle_ws())
-    tcp_handler = asyncio.create_task(wsproxy_conn.handle_tcp())
-    await asyncio.gather(ws_handler, tcp_handler)
+    try:
+      if await wsproxy_conn.setup_connection():
+        ws_handler = asyncio.create_task(wsproxy_conn.handle_ws())
+        tcp_handler = asyncio.create_task(wsproxy_conn.handle_tcp())
+        await asyncio.gather(ws_handler, tcp_handler)
+    finally:
+      ratelimit.close_connection(client_ip)
 
 async def request_handler(path, request_headers):
   if "Upgrade" in request_headers:
@@ -124,6 +131,8 @@ async def main(args):
   if args.limits:
     ratelimit.enabled = True
     ratelimit.connections_limit = int(args.connections)
+    ratelimit.max_connections = int(args.max_connections)
+    ratelimit.total_connection_limit = int(args.total_connections)
     ratelimit.bandwidth_limit = float(args.bandwidth)
     ratelimit.window_size = float(args.window)
   

@@ -81,6 +81,8 @@ def main():
   parser.add_argument("--limits", action="store_true", help="Enable rate limits.")
   parser.add_argument("--bandwidth", default=1000, help="Bandwidth limit per IP, in kilobytes per second.")
   parser.add_argument("--connections", default=30, help="New connections limit per IP.")
+  parser.add_argument("--max-connections", default=64, help="Concurrent open connections limit per IP.")
+  parser.add_argument("--total-connections", default=1024, help="Concurrent open connections limit across all IPs.")
   parser.add_argument("--window", default=60, help="Fixed window length for rate limits, in seconds.")
   parser.add_argument("--allow-loopback", action="store_true", help="Allow connections to loopback IP addresses.")
   parser.add_argument("--allow-private", action="store_true", help="Allow connections to private IP addresses.")

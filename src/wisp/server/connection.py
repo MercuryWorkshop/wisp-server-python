@@ -35,6 +35,8 @@ class WSProxyConnection:
     except Exception as e:
       logging.info(f"Creating a WSProxy stream to {self.tcp_host}:{self.tcp_port} failed: {e}")
       await self.ws.close()
+      return False
+    return True
 
   async def handle_ws(self):
     while True:
@@ -47,7 +49,7 @@ class WSProxyConnection:
       await self.conn.send(data)
     
     self.conn.close()
-  
+    
   async def handle_tcp(self):
     while True:
       data = await self.conn.recv()
@@ -78,13 +80,6 @@ class WispConnection:
     hostname = payload[3:].decode()
     logging.debug(f"({self.id}) Creating a new stream to {hostname}:{destination_port}")
 
-    #rate limited
-    stream_count = ratelimit.get_client_attr(self.client_ip, "streams")
-    if ratelimit.enabled and stream_count > ratelimit.connections_limit:
-      await self.send_close_packet(stream_id, 0x49)
-      self.close_stream(stream_id)
-      return
-    
     #info looks valid - try to open the connection now
     try:
       if stream_type == 0x01:
@@ -108,8 +103,6 @@ class WispConnection:
     self.active_streams[stream_id]["ws_to_tcp_task"] = ws_to_tcp_task
     self.active_streams[stream_id]["tcp_to_ws_task"] = tcp_to_ws_task
 
-    ratelimit.inc_client_attr(self.client_ip, "streams")
-  
   async def task_wrapper(self, target_func, *args, **kwargs):
     try:
       await target_func(*args, **kwargs)
@@ -133,6 +126,9 @@ class WispConnection:
         continue_payload = struct.pack(continue_format, buffer_remaining)
         continue_packet = struct.pack(packet_format, 0x03, stream_id) + continue_payload
         await self.ws.send(continue_packet)
+    
+    #writing to the tcp socket failed - close the whole stream
+    self.close_stream(stream_id)
   
   async def stream_tcp_to_ws(self, stream_id):
     stream = self.active_streams[stream_id]
@@ -156,11 +152,12 @@ class WispConnection:
     self.close_stream(stream_id)
   
   async def send_close_packet(self, stream_id, reason):
-    if not stream_id in self.active_streams:
-      return
     close_payload = struct.pack(close_format, reason)
     close_packet = struct.pack(packet_format, 0x04, stream_id) + close_payload
-    await self.ws.send(close_packet)
+    try:
+      await self.ws.send(close_packet)
+    except Exception:
+      pass #the websocket already closed
   
   def close_stream(self, stream_id):
     if not stream_id in self.active_streams:
@@ -177,7 +174,9 @@ class WispConnection:
     if stream["tcp_to_ws_task"] is not None and not stream["tcp_to_ws_task"].done():
       stream["tcp_to_ws_task"].cancel()
     
+    #releases the connection slot that was reserved when the stream was created
     del self.active_streams[stream_id]
+    ratelimit.close_connection(self.client_ip)
   
   async def handle_ws(self):
     while True:
@@ -200,6 +199,18 @@ class WispConnection:
       packet_type, stream_id = struct.unpack(packet_format, data[:5])
 
       if packet_type == 0x01: #CONNECT packet
+        if stream_id in self.active_streams:
+          continue #a stream with this id already exists
+        
+        #check the rate limits as soon as the connect packet arrives, before any
+        #dns lookups and tcp handshakes are allowed to happen
+        stream_count = ratelimit.get_client_attr(self.client_ip, "streams")
+        rate_limited = ratelimit.enabled and stream_count > ratelimit.connections_limit
+        if rate_limited or not ratelimit.open_connection(self.client_ip):
+          await self.send_close_packet(stream_id, 0x49) #0x49 = connection throttled
+          continue
+        ratelimit.inc_client_attr(self.client_ip, "streams")
+        
         connect_task = asyncio.create_task(self.task_wrapper(self.new_stream, stream_id, payload))
         self.active_streams[stream_id] = {
           "conn": None,
