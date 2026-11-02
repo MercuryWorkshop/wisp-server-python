@@ -45,7 +45,7 @@ default_html = f"""
     <p>This program is licensed under the <a href="https://github.com/MercuryWorkshop/wisp-server-python/blob/main/LICENSE">GNU AGPL v3</a>.</p>
     <pre>
 wisp-server-python: a Wisp server implementation written in Python
-Copyright (C) 2025 Mercury Workshop
+Copyright (C) 2026 Mercury Workshop
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published by
