@@ -91,6 +91,12 @@ class WispConnection:
       self.active_streams[stream_id]["conn"] = connection
       await connection.connect()
         
+    except TypeError:
+      #typeerrors are raised when the destination is blocked by the server
+      await self.send_close_packet(stream_id, 0x48) #0x48 = destination blocked
+      self.close_stream(stream_id)
+      return
+
     except Exception as e:
       logging.warn(f"({self.id}) Creating a new stream to {hostname}:{destination_port} failed: {e}")
       await self.send_close_packet(stream_id, 0x42)

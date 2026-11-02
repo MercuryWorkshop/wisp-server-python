@@ -1,6 +1,7 @@
 import asyncio
 import socket
 import ipaddress
+import logging
 
 import asyncudp
 from python_socks.async_.asyncio import Proxy
@@ -12,6 +13,10 @@ block_loopback = False
 block_private = False
 block_udp = False
 block_tcp = False
+
+#lists of destinations that connections are not allowed to use
+blocked_hosts = set()
+blocked_networks = []
 
 proxy_url = None
 proxy_dns = False
@@ -44,8 +49,13 @@ def validate_ip(addr_str):
     raise TypeError("Connection to loopback ip address blocked.")
   if block_private and ip_addr.is_private and not ip_addr.is_loopback:
     raise TypeError("Connection to private ip address blocked.")
+  if blocked_networks and any(ip_addr in network for network in blocked_networks):
+    raise TypeError("Connection to blacklisted ip address blocked.")
 
 async def validate_hostname(host, port, stream_type):
+  #don't let blacklisted hostnames through, whether or not they are ips
+  if host.lower() in blocked_hosts:
+    raise TypeError(f"Connection to {host} blocked by the blacklist.")
   if is_ip(host):
     validate_ip(host)
     return host
@@ -56,6 +66,24 @@ async def validate_hostname(host, port, stream_type):
     addr_str = await get_ip_async(host, port, stream_type)
     validate_ip(addr_str)
     return addr_str
+
+def load_blacklist(path):
+  #reads a blacklist file with one destination per line: a hostname, an ip address, or an ip range in cidr notation
+  try:
+    blacklist_file = open(path)
+  except OSError as e:
+    logging.warning(f"Failed to load the blacklist from {path}: {e}")
+    return
+  with blacklist_file:
+    for line in blacklist_file:
+      line = line.strip()
+      if not line or line.startswith("#"):
+        continue
+      if "/" in line:
+        block_network = ipaddress.ip_network(line, strict=False)
+        blocked_networks.append(block_network)
+      else:
+        blocked_hosts.add(line.lower())
 
 class TCPConnection:
   def __init__(self, hostname, port):

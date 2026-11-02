@@ -136,6 +136,9 @@ async def main(args):
     ratelimit.bandwidth_limit = float(args.bandwidth)
     ratelimit.window_size = float(args.window)
   
+  if args.blacklist:
+    net.load_blacklist(args.blacklist)
+
   if args.proxy:
     if args.proxy.startswith("socks5h:"):
       net.proxy_url = args.proxy.replace("socks5h:", "socks5:", 1)

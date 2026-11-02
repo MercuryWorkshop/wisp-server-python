@@ -91,6 +91,7 @@ def main():
   parser.add_argument("--proxy", default=None, help="The url of the socks5h, socks5, sock4a, socks4 or http proxy to use.")
   parser.add_argument("--block-udp", action="store_true", help="Block UDP streams.")
   parser.add_argument("--block-tcp", action="store_true", help="Block TCP streams.")
+  parser.add_argument("--blacklist", default=None, help="The path of a blacklist file with blacklisted destinations. One destination per line, and it can be a hostname, an ip address, or an ip range in cidr notation. Lines starting with # are ignored.")
   args = parser.parse_args()
 
   logging.basicConfig(
@@ -105,6 +106,8 @@ def main():
     logging.info(f"serving static files from {static_path}")
   if args.limits:
     logging.info("enabled rate limits")
+  if args.blacklist:
+    logging.info(f"loading blacklist from {args.blacklist}")
   if args.proxy:
     logging.info(f"proxy enabled: {args.proxy}")
   logging.info(f"running on {platform.python_implementation()} {platform.python_version()}")
