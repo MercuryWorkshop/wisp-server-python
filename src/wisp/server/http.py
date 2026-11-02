@@ -115,7 +115,7 @@ async def request_handler(path, request_headers):
   if not target_path.exists():
     return 404, response_headers, "404 not found".encode()
   
-  mimetype = mimetypes.guess_type(target_path.name)[0]
+  mimetype = mimetypes.guess_type(target_path.name)[0] or "application/octet-stream"
   response_headers.append(("Content-Type", mimetype))
 
   static_data = await asyncio.to_thread(target_path.read_bytes)

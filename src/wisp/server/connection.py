@@ -11,6 +11,9 @@ from wisp.server import net
 queue_size = 128
 static_path = None
 
+#how long a stream has to finish connecting, in seconds
+connect_timeout = 10
+
 #wisp packet format definitions
 #see https://docs.python.org/3/library/struct.html for what these characters mean
 packet_format = "<BI"
@@ -26,12 +29,17 @@ class WSProxyConnection:
 
   async def setup_connection(self):
     addr_str = self.path.split("/")[-1]
-    self.tcp_host, self.tcp_port = addr_str.split(":")
-    self.tcp_port = int(self.tcp_port)
+    try:
+      self.tcp_host, self.tcp_port = addr_str.rsplit(":", 1)
+      self.tcp_port = int(self.tcp_port)
+    except ValueError as e:
+      logging.info(f"Failed to parse the WSProxy destination {addr_str}: {e}")
+      await self.ws.close()
+      return False
 
     try:
       self.conn = net.TCPConnection(self.tcp_host, self.tcp_port)
-      await self.conn.connect()
+      await asyncio.wait_for(self.conn.connect(), timeout=connect_timeout)
     except Exception as e:
       logging.info(f"Creating a WSProxy stream to {self.tcp_host}:{self.tcp_port} failed: {e}")
       await self.ws.close()
@@ -46,18 +54,29 @@ class WSProxyConnection:
         break
 
       await ratelimit.limit_client_bandwidth(self.client_ip, len(data), "ws")
-      await self.conn.send(data)
+      try:
+        await self.conn.send(data)
+      except Exception:
+        break #the tcp socket closed
     
     self.conn.close()
     
+
   async def handle_tcp(self):
     while True:
-      data = await self.conn.recv()
+      try:
+        data = await self.conn.recv()
+      except Exception as e:
+        logging.warning(f"Reading tcp data failed: {e}")
+        break
       if len(data) == 0:
         break #socket closed
 
       await ratelimit.limit_client_bandwidth(self.client_ip, len(data), "tcp")
-      await self.ws.send(data)
+      try:
+        await self.ws.send(data)
+      except ConnectionClosed:
+        break #the websocket closed
     
     await self.ws.close()
 
@@ -76,29 +95,46 @@ class WispConnection:
     await self.ws.send(continue_packet)
 
   async def new_stream(self, stream_id, payload):
-    stream_type, destination_port = struct.unpack(connect_format, payload[:3])
-    hostname = payload[3:].decode()
+    #parse the stream type and destination from the connect payload
+    try:
+      stream_type, destination_port = struct.unpack(connect_format, payload[:3])
+      hostname = payload[3:].decode()
+    except Exception:
+      logging.debug(f"({self.id}) Rejected a malformed connect packet for stream {stream_id}")
+      await self.send_close_packet(stream_id, 0x41) #0x41 = invalid information
+      self.close_stream(stream_id)
+      return
     logging.debug(f"({self.id}) Creating a new stream to {hostname}:{destination_port}")
 
+    if not stream_type in (0x01, 0x02):
+      await self.send_close_packet(stream_id, 0x41) #0x41 = invalid information
+      self.close_stream(stream_id)
+      return
+    
     #info looks valid - try to open the connection now
     try:
       if stream_type == 0x01:
         connection = net.TCPConnection(hostname, destination_port)
       elif stream_type == 0x02: 
         connection = net.UDPConnection(hostname, destination_port)
-      else:
-        raise Exception("Invalid stream type.")
       self.active_streams[stream_id]["conn"] = connection
-      await connection.connect()
-        
+      #don't let hung connections hold their resources forever
+      await asyncio.wait_for(connection.connect(), timeout=connect_timeout)
+
     except TypeError:
       #typeerrors are raised when the destination is blocked by the server
       await self.send_close_packet(stream_id, 0x48) #0x48 = destination blocked
       self.close_stream(stream_id)
       return
 
+    except asyncio.TimeoutError as e:
+      logging.info(f"({self.id}) Connecting to {hostname}:{destination_port} timed out")
+      await self.send_close_packet(stream_id, 0x43) #0x43 = stream creation timed out
+      self.close_stream(stream_id)
+      return
+
     except Exception as e:
-      logging.warn(f"({self.id}) Creating a new stream to {hostname}:{destination_port} failed: {e}")
+      logging.warning(f"({self.id}) Creating a new stream to {hostname}:{destination_port} failed: {e}")
       await self.send_close_packet(stream_id, 0x42)
       self.close_stream(stream_id)
       return
@@ -112,8 +148,10 @@ class WispConnection:
   async def task_wrapper(self, target_func, *args, **kwargs):
     try:
       await target_func(*args, **kwargs)
-    except asyncio.CancelledError as e:
-      raise e
+    except asyncio.CancelledError:
+      raise
+    except Exception as e:
+      logging.warning(f"({self.id}) A stream task failed with an unexpected exception: {e}")
         
   async def stream_ws_to_tcp(self, stream_id):
     #this infinite loop should get killed by the task.cancel call later on
@@ -122,8 +160,8 @@ class WispConnection:
       data = await stream["queue"].get()
       try:
         await stream["conn"].send(data)
-      except:
-        break
+      except Exception:
+        break #the tcp socket closed
 
       #send a CONTINUE packet periodically
       stream["packets_sent"] += 1
@@ -133,6 +171,7 @@ class WispConnection:
         continue_packet = struct.pack(packet_format, 0x03, stream_id) + continue_payload
         await self.ws.send(continue_packet)
     
+
     #writing to the tcp socket failed - close the whole stream
     self.close_stream(stream_id)
   
@@ -142,7 +181,7 @@ class WispConnection:
       try:
         data = await stream["conn"].recv()
       except Exception as e:
-        logging.warn(f"({self.id}) Receiving data from stream failed: {e}")
+        logging.warning(f"({self.id}) Receiving data from stream failed: {e}")
         await self.send_close_packet(stream_id, 0x03)
         self.close_stream(stream_id)
         return
@@ -152,7 +191,10 @@ class WispConnection:
       data_packet = struct.pack(packet_format, 0x02, stream_id) + data
 
       await ratelimit.limit_client_bandwidth(self.client_ip, len(data_packet), "tcp")
-      await self.ws.send(data_packet)
+      try:
+        await self.ws.send(data_packet)
+      except Exception:
+        break #the websocket closed
 
     await self.send_close_packet(stream_id, 0x02)
     self.close_stream(stream_id)
@@ -191,7 +233,7 @@ class WispConnection:
       except ConnectionClosed:
         break
       except Exception as e:
-        logging.warn(f"({self.id}) Receiving data from websocket failed: {e}")
+        logging.warning(f"({self.id}) Receiving data from websocket failed: {e}")
         break
 
       if not isinstance(data, bytes): 
@@ -201,6 +243,8 @@ class WispConnection:
       await ratelimit.limit_client_bandwidth(self.client_ip, len(data), "ws")
       
       #get basic packet info
+      if len(data) < 5:
+        continue #malformed packet
       payload = data[5:]
       packet_type, stream_id = struct.unpack(packet_format, data[:5])
 
@@ -208,6 +252,7 @@ class WispConnection:
         if stream_id in self.active_streams:
           continue #a stream with this id already exists
         
+
         #check the rate limits as soon as the connect packet arrives, before any
         #dns lookups and tcp handshakes are allowed to happen
         stream_count = ratelimit.get_client_attr(self.client_ip, "streams")
@@ -217,6 +262,7 @@ class WispConnection:
           continue
         ratelimit.inc_client_attr(self.client_ip, "streams")
         
+
         connect_task = asyncio.create_task(self.task_wrapper(self.new_stream, stream_id, payload))
         self.active_streams[stream_id] = {
           "conn": None,
@@ -232,9 +278,17 @@ class WispConnection:
         stream = self.active_streams.get(stream_id)
         if not stream:
           continue
-        await stream["queue"].put(payload)
+        try:
+          stream["queue"].put_nowait(payload)
+        except asyncio.QueueFull:
+          #the client sent more data than the stream can buffer - reset the stream
+          logging.debug(f"({self.id}) Stream {stream_id} reset for exceeding its send buffer")
+          await self.send_close_packet(stream_id, 0x03)
+          self.close_stream(stream_id)
       
       elif packet_type == 0x04: #CLOSE packet
+        if len(payload) < 1:
+          continue #malformed packet
         reason = struct.unpack(close_format, payload)[0]
         self.close_stream(stream_id)
   

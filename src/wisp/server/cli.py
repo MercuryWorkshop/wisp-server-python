@@ -129,5 +129,5 @@ def main():
   
   else:
     if threads != 0:
-      logging.warn("the --threads option is not supported on this platform")
+      logging.warning("the --threads option is not supported on this platform")
     run_http(args)

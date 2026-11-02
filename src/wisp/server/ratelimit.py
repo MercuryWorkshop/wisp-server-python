@@ -71,7 +71,9 @@ def calculate_client_bandwidth(client_ip, attr):
   start_time = get_client_attr(client_ip, "start")
   total_data = get_client_attr(client_ip, attr)
   now = time.time()
-  return total_data / (now - start_time) / 1000
+  #avoid a division by zero for clients that send data right after connecting
+  elapsed = max(now - start_time, 0.001)
+  return total_data / elapsed / 1000
 
 async def limit_client_bandwidth(client_ip, length, attr):
   if not enabled: return
