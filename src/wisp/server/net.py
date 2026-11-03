@@ -4,6 +4,10 @@ import ipaddress
 
 import asyncudp
 from python_socks.async_.asyncio import Proxy
+try:
+  import pymasque
+except ImportError:
+  pass
 
 #various network utilities and wrappers
 
@@ -15,6 +19,7 @@ block_tcp = False
 
 proxy_url = None
 proxy_dns = False
+warp = None
 
 def reuse_port_supported():
   return hasattr(socket, "SO_REUSEPORT")
@@ -69,7 +74,14 @@ class TCPConnection:
       raise TypeError("TCP connection blocked.")
 
     addr_str = await validate_hostname(self.hostname, self.port, 0x01)
-    if proxy_url:
+    if proxy_url == "warp":
+      global warp
+      if warp is None:
+        warp = pymasque.WarpConnection()
+      stream = await warp.open_stream(self.hostname, self.port)
+      await stream.ensure_response()
+      self.tcp_reader, self.tcp_writer = stream, stream
+    elif proxy_url:
       proxy = Proxy.from_url(proxy_url, rdns=proxy_dns)
       proxy_dest = self.hostname if proxy_dns else addr_str
       sock = await proxy.connect(dest_host=proxy_dest, dest_port=self.port)

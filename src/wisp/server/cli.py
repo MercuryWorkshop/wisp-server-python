@@ -23,6 +23,12 @@ except ImportError:
   except ImportError:
     event_loop = "asyncio"
 
+try:
+  import pymasque
+  has_pymasque = True
+except ImportError:
+  has_pymasque = False
+
 import wisp
 from wisp.server import http 
 from wisp.server import net
@@ -86,7 +92,7 @@ def main():
   parser.add_argument("--allow-private", action="store_true", help="Allow connections to private IP addresses.")
   parser.add_argument("--log-level", default="info", help="The log level (either debug, info, warning, error, or critical).")
   parser.add_argument("--threads", default=0, help="The number of threads to run the server on. By default it uses all CPU cores. (Linux only)")
-  parser.add_argument("--proxy", default=None, help="The url of the socks5h, socks5, sock4a, socks4 or http proxy to use.")
+  parser.add_argument("--proxy", default=None, help="The url of the socks5h, socks5, sock4a, socks4 or http proxy to use. Set this to 'warp' to use Cloudflare Warp as a proxy.")
   parser.add_argument("--block-udp", action="store_true", help="Block UDP streams.")
   parser.add_argument("--block-tcp", action="store_true", help="Block TCP streams.")
   args = parser.parse_args()
@@ -96,8 +102,10 @@ def main():
     level=getattr(logging, args.log_level.upper()),
     datefmt="%Y/%m/%d - %H:%M:%S"
   )
-
   logging.info(f"running wisp-server-python v{wisp.version} (async)")
+
+  if args.proxy and args.proxy == "warp" and has_pymasque == False:
+    raise ImportError("warp proxy was selected by pymasque is not installed. run 'pip install wisp-python[warp]' to install it")
   if args.static:
     static_path = pathlib.Path(args.static).resolve()
     logging.info(f"serving static files from {static_path}")

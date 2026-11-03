@@ -17,15 +17,21 @@ Run the following command to install this program:
 pip3 install wisp-python
 ```
 
+To install the Cloudflare Warp proxy feature:
+```
+pip3 install wisp-python[warp]
+```
+This allows you proxy all exit traffic through Cloudflare Warp.
+
 ## Running the Server:
 For the best performance use [CPython](https://github.com/python/cpython) 3.11 or newer. [PyPy](https://github.com/pypy/pypy) is not recommended as it is a lot slower than CPython here. 
 
 To start the server, run `python3 -m wisp.server`. The program accepts the following arguments:
 ```
-usage: wisp-server-python [-h] [--host HOST] [--port PORT] [--static STATIC] [--limits] [--bandwidth BANDWIDTH] [--connections CONNECTIONS] [--window WINDOW] [--allow-loopback] [--allow-private] [--log-level LOG_LEVEL]
-                          [--threads THREADS] [--proxy PROXY] [--block-udp] [--block-tcp]
+usage: wisp-server-python [-h] [--host HOST] [--port PORT] [--static STATIC] [--limits] [--bandwidth BANDWIDTH] [--connections CONNECTIONS] [--window WINDOW] [--allow-loopback] [--allow-private] [--log-level LOG_LEVEL] [--threads THREADS] [--proxy PROXY]
+                          [--block-udp] [--block-tcp]
 
-A Wisp server implementation, written in Python (v0.8.3)
+A Wisp server implementation, written in Python (v0.10.0)
 
 options:
   -h, --help            show this help message and exit
@@ -43,7 +49,7 @@ options:
   --log-level LOG_LEVEL
                         The log level (either debug, info, warning, error, or critical).
   --threads THREADS     The number of threads to run the server on. By default it uses all CPU cores. (Linux only)
-  --proxy PROXY         The url of the socks5h, socks5, sock4a, socks4 or http proxy to use.
+  --proxy PROXY         The url of the socks5h, socks5, sock4a, socks4 or http proxy to use. Set this to 'warp' to use Cloudflare Warp as a proxy.
   --block-udp           Block UDP streams.
   --block-tcp           Block TCP streams.
 ```
