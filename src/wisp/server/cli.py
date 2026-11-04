@@ -87,6 +87,8 @@ def main():
   parser.add_argument("--limits", action="store_true", help="Enable rate limits.")
   parser.add_argument("--bandwidth", default=1000, help="Bandwidth limit per IP, in kilobytes per second.")
   parser.add_argument("--connections", default=30, help="New connections limit per IP.")
+  parser.add_argument("--max-connections", default=64, help="Concurrent open connections limit per IP.")
+  parser.add_argument("--total-connections", default=1024, help="Concurrent open connections limit across all IPs.")
   parser.add_argument("--window", default=60, help="Fixed window length for rate limits, in seconds.")
   parser.add_argument("--allow-loopback", action="store_true", help="Allow connections to loopback IP addresses.")
   parser.add_argument("--allow-private", action="store_true", help="Allow connections to private IP addresses.")
@@ -97,6 +99,7 @@ def main():
   parser.add_argument("--dns-order", default="verbatim", help="Whether to prefer IPv4 or IPv6 when resolving hostnames (either verbatim, ipv4first, or ipv6first)")
   parser.add_argument("--block-udp", action="store_true", help="Block UDP streams.")
   parser.add_argument("--block-tcp", action="store_true", help="Block TCP streams.")
+  parser.add_argument("--blacklist", default=None, help="The path of a blacklist file with blacklisted destinations. One destination per line, and it can be a hostname, an ip address, or an ip range in cidr notation. Lines starting with # are ignored.")
   args = parser.parse_args()
 
   logging.basicConfig(
@@ -113,6 +116,8 @@ def main():
     logging.info(f"serving static files from {static_path}")
   if args.limits:
     logging.info("enabled rate limits")
+  if args.blacklist:
+    logging.info(f"loading blacklist from {args.blacklist}")
   if args.proxy:
     logging.info(f"proxy enabled: {args.proxy}")
   elif args.outbound_iface:
@@ -136,5 +141,5 @@ def main():
   
   else:
     if threads != 0:
-      logging.warn("the --threads option is not supported on this platform")
+      logging.warning("the --threads option is not supported on this platform")
     run_http(args)

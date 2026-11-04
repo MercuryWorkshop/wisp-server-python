@@ -46,7 +46,7 @@ default_html = f"""
     <p>This program is licensed under the <a href="https://github.com/MercuryWorkshop/wisp-server-python/blob/main/LICENSE">GNU AGPL v3</a>.</p>
     <pre>
 wisp-server-python: a Wisp server implementation written in Python
-Copyright (C) 2025 Mercury Workshop
+Copyright (C) 2026 Mercury Workshop
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published by
@@ -82,14 +82,21 @@ async def connection_handler(websocket, path):
     await asyncio.gather(ws_handler)
 
   else:
+    #check the rate limits before connecting to the target
     stream_count = ratelimit.get_client_attr(client_ip, "streams")
     if ratelimit.enabled and stream_count > ratelimit.connections_limit:
       return
+    if not ratelimit.open_connection(client_ip):
+      return
+
     wsproxy_conn = connection.WSProxyConnection(websocket, path, client_ip)
-    await wsproxy_conn.setup_connection()
-    ws_handler = asyncio.create_task(wsproxy_conn.handle_ws())
-    tcp_handler = asyncio.create_task(wsproxy_conn.handle_tcp())
-    await asyncio.gather(ws_handler, tcp_handler)
+    try:
+      if await wsproxy_conn.setup_connection():
+        ws_handler = asyncio.create_task(wsproxy_conn.handle_ws())
+        tcp_handler = asyncio.create_task(wsproxy_conn.handle_tcp())
+        await asyncio.gather(ws_handler, tcp_handler)
+    finally:
+      ratelimit.close_connection(client_ip)
 
 async def request_handler(path, request_headers):
   if "Upgrade" in request_headers:
@@ -110,7 +117,7 @@ async def request_handler(path, request_headers):
   if not target_path.exists():
     return 404, response_headers, "404 not found".encode()
   
-  mimetype = mimetypes.guess_type(target_path.name)[0]
+  mimetype = mimetypes.guess_type(target_path.name)[0] or "application/octet-stream"
   response_headers.append(("Content-Type", mimetype))
 
   static_data = await asyncio.to_thread(target_path.read_bytes)
@@ -126,9 +133,14 @@ async def main(args):
   if args.limits:
     ratelimit.enabled = True
     ratelimit.connections_limit = int(args.connections)
+    ratelimit.max_connections = int(args.max_connections)
+    ratelimit.total_connection_limit = int(args.total_connections)
     ratelimit.bandwidth_limit = float(args.bandwidth)
     ratelimit.window_size = float(args.window)
   
+  if args.blacklist:
+    net.load_blacklist(args.blacklist)
+
   if args.proxy:
     if args.proxy.startswith("socks5h:"):
       net.proxy_url = args.proxy.replace("socks5h:", "socks5:", 1)

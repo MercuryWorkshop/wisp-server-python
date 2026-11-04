@@ -26,6 +26,8 @@ This allows you proxy all exit traffic through Cloudflare Warp.
 ## Running the Server:
 For the best performance use [CPython](https://github.com/python/cpython) 3.11 or newer. [PyPy](https://github.com/pypy/pypy) is not recommended as it is a lot slower than CPython here. 
 
+If you are running this server publicly, you should start it with the `--limits` flag to enable rate limits and other anti abuse protections. The `--blacklist` option can also be used to block specific destinations.
+
 To start the server, run `python3 -m wisp.server`. The program accepts the following arguments:
 ```
 usage: wisp-server-python [-h] [--host HOST] [--port PORT] [--static STATIC] [--limits] [--bandwidth BANDWIDTH] [--connections CONNECTIONS] [--window WINDOW] [--allow-loopback] [--allow-private] [--log-level LOG_LEVEL] [--threads THREADS] [--proxy PROXY]
@@ -43,6 +45,10 @@ options:
                         Bandwidth limit per IP, in kilobytes per second.
   --connections CONNECTIONS
                         New connections limit per IP.
+  --max-connections MAX_CONNECTIONS
+                        Concurrent open connections limit per IP.
+  --total-connections TOTAL_CONNECTIONS
+                        Concurrent open connections limit across all IPs.
   --window WINDOW       Fixed window length for rate limits, in seconds.
   --allow-loopback      Allow connections to loopback IP addresses.
   --allow-private       Allow connections to private IP addresses.
@@ -56,6 +62,9 @@ options:
                         Whether to prefer IPv4 or IPv6 when resolving hostnames (either verbatim, ipv4first, or ipv6first)
   --block-udp           Block UDP streams.
   --block-tcp           Block TCP streams.
+  --blacklist BLACKLIST
+                        The path of a blacklist file with blacklisted destinations. One destination per line, and it can be a hostname, an ip address, or an ip range in cidr notation. Lines starting
+                        with # are ignored.
 ```
 
 ## Roadmap:
@@ -73,7 +82,7 @@ A few third party libraries are used. See [`LICENSE_third_party.md`](https://git
 ### Copyright Notice:
 ```
 wisp-server-python: a Wisp server implementation written in Python
-Copyright (C) 2025 Mercury Workshop
+Copyright (C) 2026 Mercury Workshop
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published by
