@@ -11,7 +11,7 @@ package-dir = {"" = "src"}
 
 [project]
 name = "wisp-python"
-version = "0.9.1"
+version = "0.11.0"
 license = "AGPL-3.0-or-later"
 authors = [
   {name="ading2210"},
@@ -27,8 +27,14 @@ dependencies = [
   "websockets",
   "asyncudp",
   "python-socks[asyncio]",
+  "psutil",
   "uvloop; sys_platform != 'win32' and sys_platform != 'cygwin'",
   "winloop; sys_platform == 'win32' or sys_platform == 'cygwin'"
+]
+
+[project.optional-dependencies]
+warp = [
+  "pymasque"
 ]
 
 [project.urls]
