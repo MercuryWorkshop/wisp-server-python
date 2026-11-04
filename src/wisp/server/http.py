@@ -3,6 +3,7 @@ import pathlib
 import mimetypes
 import logging
 import random
+import socket
 import textwrap
 
 from websockets.server import serve
@@ -138,11 +139,18 @@ async def main(args):
     else:
       net.proxy_url = args.proxy
       net.proxy_dns = False
+  elif args.outbound_iface:
+    net.iface_name = args.outbound_iface
+    net.iface_addr_ipv4 = net.get_nic_ip(args.outbound_iface, socket.AF_INET)
+    net.iface_addr_ipv6 = net.get_nic_ip(args.outbound_iface, socket.AF_INET6)
+    if net.iface_addr_ipv4 is None and net.iface_addr_ipv6 is None:
+      raise ValueError(f"could not find ip address for interface {args.outbound_iface}")
 
   net.block_loopback = not args.allow_loopback
   net.block_private = not args.allow_private
   net.block_udp = args.block_udp
   net.block_tcp = args.block_tcp
+  net.dns_order = args.dns_order
       
   limit_task = asyncio.create_task(ratelimit.reset_limits_timer())
   ws_logger = logging.getLogger("websockets")

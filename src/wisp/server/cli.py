@@ -93,6 +93,8 @@ def main():
   parser.add_argument("--log-level", default="info", help="The log level (either debug, info, warning, error, or critical).")
   parser.add_argument("--threads", default=0, help="The number of threads to run the server on. By default it uses all CPU cores. (Linux only)")
   parser.add_argument("--proxy", default=None, help="The url of the socks5h, socks5, sock4a, socks4 or http proxy to use. Set this to 'warp' to use Cloudflare Warp as a proxy.")
+  parser.add_argument("--outbound-iface", default=None, help="The network interface to direct all outbound traffic through, if no proxy is selected.")
+  parser.add_argument("--dns-order", default="verbatim", help="Whether to prefer IPv4 or IPv6 when resolving hostnames (either verbatim, ipv4first, or ipv6first)")
   parser.add_argument("--block-udp", action="store_true", help="Block UDP streams.")
   parser.add_argument("--block-tcp", action="store_true", help="Block TCP streams.")
   args = parser.parse_args()
@@ -113,6 +115,8 @@ def main():
     logging.info("enabled rate limits")
   if args.proxy:
     logging.info(f"proxy enabled: {args.proxy}")
+  elif args.outbound_iface:
+    logging.info(f"routing outbound traffic through the {args.outbound_iface} interface")
   logging.info(f"running on {platform.python_implementation()} {platform.python_version()}")
   logging.info(f"listening on {args.host}:{args.port}")
 
