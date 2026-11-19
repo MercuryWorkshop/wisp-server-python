@@ -3,7 +3,6 @@ import socket
 import ipaddress
 
 import asyncudp
-import psutil
 from python_socks.async_.asyncio import Proxy
 try:
   import pymasque
@@ -57,6 +56,9 @@ def get_ip(host, port, stream_type):
 
 #find the ip address of a network interface such as a vpn
 def get_nic_ip(iface_name, socket_family=socket.AF_INET):
+  #imported lazily because psutil's extension module cannot be loaded in
+  #isolated subinterpreters, which are used when running with multiple threads
+  import psutil
   all_addrs = psutil.net_if_addrs()
   if not iface_name in all_addrs:
     raise ValueError(f"interface {iface_name} not found. valid values: {list(all_addrs.keys())}")

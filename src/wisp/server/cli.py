@@ -33,6 +33,9 @@ import wisp
 from wisp.server import http 
 from wisp.server import net
 
+log_format = "[%(asctime)s] %(levelname)-8s %(message)s"
+log_datefmt = "%Y/%m/%d - %H:%M:%S"
+
 def run_async(func, *args, **kwargs):
   try:
     if event_loop == "uvloop":
@@ -45,7 +48,39 @@ def run_async(func, *args, **kwargs):
     pass
 
 def run_http(args):
+  #each subinterpreter and process has its own logging state, so the config
+  #from the main process does not carry over
+  logging.basicConfig(
+    format=log_format,
+    level=getattr(logging, args.log_level.upper()),
+    datefmt=log_datefmt
+  )
   run_async(http.main, args)
+
+#attempt to import the given modules from a subinterpreter. this is used to
+#check whether the extension modules we depend on support isolated
+#subinterpreters (required for python 3.15+), since they will otherwise fail to import at runtime
+def import_modules(modules):
+  for module in modules:
+    __import__(module)
+
+def subinterpreters_supported(modules):
+  #modules for subinterpreters are isolated by default, and extension modules
+  #have to explicitly opt in to being loaded in them. uvloop, winloop, and
+  #psutil currently do not, so fall back to processes if any of them fail
+  if not has_subinterpreters:
+    return False
+  try:
+    interpreter = concurrent.interpreters.create()
+  except Exception:
+    return False
+  try:
+    interpreter.call(import_modules, modules)
+    return True
+  except Exception:
+    return False
+  finally:
+    interpreter.close()
 
 def run_processes(thread_count, args):
   processes = []
@@ -100,9 +135,9 @@ def main():
   args = parser.parse_args()
 
   logging.basicConfig(
-    format="[%(asctime)s] %(levelname)-8s %(message)s",
+    format=log_format,
     level=getattr(logging, args.log_level.upper()),
-    datefmt="%Y/%m/%d - %H:%M:%S"
+    datefmt=log_datefmt
   )
   logging.info(f"running wisp-server-python v{wisp.version} (async)")
 
@@ -129,9 +164,21 @@ def main():
       threads = multiprocessing.cpu_count()
     logging.info(f"running using {threads} threads")
     
-    if has_subinterpreters:
-      run_subinterpreters(threads, args);
+    subinterpreter_modules = []
+    if event_loop == "uvloop":
+      subinterpreter_modules.append("uvloop")
+    elif event_loop == "winloop":
+      subinterpreter_modules.append("winloop")
+    if args.outbound_iface:
+      subinterpreter_modules.append("psutil")
+    if args.proxy == "warp":
+      subinterpreter_modules.append("pymasque")
+
+    if subinterpreters_supported(subinterpreter_modules):
+      run_subinterpreters(threads, args)
     else:
+      if has_subinterpreters:
+        logging.warning("installed dependencies do not support subinterpreters, falling back to processes")
       run_processes(threads, args)
   
   else:
